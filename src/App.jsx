@@ -2,21 +2,30 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 
 /*
-  THEBUTTON - Viral Progressive Chaos Experience
-  - Calm at start, ramps to wild as clicks rise
-  - Chaos influences drift, blur, skew, color shift, hidden sections, scrambled text
-  - Rare events: fake 404 veil, screen tear, UI melt, quantum split
-  - Particles, scanline grain, low opacity weird SVGs
-  - Spacebar triggers press, Ctrl+Shift+B toggles dev panel
-  - Console logs sprinkled throughout for debugging
+  THEBUTTON - Receipt Edition (Slow Burn to Wild)
+  This is a full receipt-themed experience that starts calm and ramps into surreal chaos.
+  - Real thermal-receipt vibe: narrow width, dashed perforations, subtotal/tax/total, barcode, QR-like block, cashier line, tender, change due
+  - 500+ progressive events generated procedurally. First ~10 clicks are quiet. Elements appear and grow over time.
+  - The button moves, splits, shatters, hides, recombines, smears ink, jams the printer, causes paper curl, misprints.
+  - Activity log uses receipt lines. Story lines print as ITEMS.
+  - Space toggles press; Ctrl+Shift+B opens a tiny dev panel.
+
+  New in this version
+  - Boss sequence with timer and HP bar. Click to defeat before time ends.
+  - Paper burn edges with dynamic scorch intensity.
+  - Coupon mini-choices that apply 60s modifiers: Tax Holiday, Ink Surge, Low Gravity.
 */
 
-// helpers
+// ===== Helpers =====
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const rb = (min, max) => Math.random() * (max - min) + min;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const pad = (n, w = 6) => String(n).padStart(w, "0");
+const fmt = (n) => n.toLocaleString();
 
-// tiny audio
+const BASE_TAX = 0.0825;
+
+// ===== Tiny audio =====
 function useTinyAudio() {
   const ctxRef = useRef(null);
   const enabledRef = useRef(false);
@@ -59,646 +68,696 @@ function useTinyAudio() {
   return { blip };
 }
 
-// particles
-const Falling = ({ type, delay = 0, onDone }) => {
-  const startX = Math.random() * window.innerWidth;
-  const size = rb(2, 8);
-  const rot = rb(-180, 180);
-  const style = (() => {
-    if (type === "pix") return { width: size, height: size, background: `hsl(${Math.random() * 360}, 85%, 60%)` };
-    if (type === "frag") return { width: size * 1.5, height: 1, background: "rgba(255,255,255,0.8)", transform: `rotate(${rot}deg)` };
-    if (type === "tear") return { width: size, height: size * 2, borderRadius: "50%", background: "rgba(120,200,255,0.85)" };
-    if (type === "glitch") return { width: size, height: size, background: `hsl(${Math.random() * 360}, 100%, 50%)`, filter: "blur(1px)" };
-    return { width: size, height: size, borderRadius: "50%", background: "rgba(255,255,255,0.6)" };
-  })();
-
+// ===== Visual Bits =====
+const Barcode = ({ seed = 0 }) => {
+  // Simple pseudo barcode made of div bars
+  const bars = useMemo(() => {
+    const arr = [];
+    const count = 60;
+    for (let i = 0; i < count; i++) {
+      const w = (i % 7 === 0 ? 3 : i % 3 === 0 ? 2 : 1) + (Math.random() < 0.07 ? 1 : 0);
+      const h = 40 + (i % 5) * 3;
+      const o = i % 9 === 0 ? 0.9 : 0.7;
+      arr.push({ w, h, o });
+    }
+    return arr;
+  }, [seed]);
   return (
-    <motion.div
-      initial={{ x: startX, y: -20, opacity: 0 }}
-      animate={{ x: startX + rb(-120, 120), y: window.innerHeight + 30, opacity: [0, 1, 1, 0], rotate: rot * 2 }}
-      transition={{ delay, duration: rb(3, 8), ease: "linear" }}
-      onAnimationComplete={onDone}
-      style={{ position: "fixed", zIndex: 1000, pointerEvents: "none", ...style }}
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60 }}>
+      {bars.map((b, i) => (
+        <div key={i} style={{ width: b.w, height: b.h, background: `rgba(0,0,0,${b.o})` }} />
+      ))}
+    </div>
+  );
+};
+
+const QRish = ({ chaos = 0 }) => {
+  // Tiny QR-like block with random dots
+  const sz = 7;
+  const cells = useMemo(() => {
+    const c = [];
+    for (let y = 0; y < sz; y++) {
+      for (let x = 0; x < sz; x++) {
+        const on = Math.random() < 0.38 + chaos * 0.1;
+        c.push({ x, y, on });
+      }
+    }
+    return c;
+  }, [chaos]);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${sz}, 6px)`, gap: 1, padding: 3, background: "#000" }}>
+      {cells.map((c, i) => (
+        <div key={i} style={{ width: 6, height: 6, background: c.on ? "#fff" : "#111" }} />
+      ))}
+    </div>
+  );
+};
+
+const TearBand = ({ active }) => (
+  <AnimatePresence>
+    {active && (
+      <motion.div
+        initial={{ y: "-100%" }}
+        animate={{ y: "100%" }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.7, ease: "linear" }}
+        style={{ position: "fixed", left: 0, right: 0, height: 80, top: 0, zIndex: 50, background: "repeating-linear-gradient(90deg, rgba(0,0,0,0.12), rgba(0,0,0,0.12) 6px, rgba(0,0,0,0.02) 6px, rgba(0,0,0,0.02) 12px)" }}
+      />
+    )}
+  </AnimatePresence>
+);
+
+const BurnEdges = ({ intensity = 0 }) => {
+  // Render radial burn spots along edges. Intensity controls opacity and size.
+  const o = clamp(intensity, 0, 1);
+  const sz = 20 + o * 40;
+  return (
+    <div
+      aria-hidden
+      style={{
+        pointerEvents: "none",
+        position: "absolute",
+        inset: 0,
+        borderRadius: 10,
+        // multiple radial gradients to fake scorch at edges and corners
+        background:
+          `radial-gradient(${sz}px ${sz}px at 0% 0%, rgba(0,0,0,${0.12 + o * 0.25}), transparent 60%),
+           radial-gradient(${sz}px ${sz}px at 100% 0%, rgba(0,0,0,${0.12 + o * 0.25}), transparent 60%),
+           radial-gradient(${sz}px ${sz}px at 0% 100%, rgba(0,0,0,${0.12 + o * 0.25}), transparent 60%),
+           radial-gradient(${sz}px ${sz}px at 100% 100%, rgba(0,0,0,${0.12 + o * 0.25}), transparent 60%),
+           radial-gradient(${sz * 0.8}px ${sz * 0.8}px at 50% 0%, rgba(0,0,0,${0.08 + o * 0.2}), transparent 55%),
+           radial-gradient(${sz * 0.8}px ${sz * 0.8}px at 50% 100%, rgba(0,0,0,${0.08 + o * 0.2}), transparent 55%)`,
+        mixBlendMode: "multiply",
+        opacity: 0.7,
+      }}
     />
   );
 };
 
-// low opacity weird overlays
-const WeirdOverlay = ({ chaos }) => {
-  const which = chaos < 0.25 ? "sigil" : chaos < 0.5 ? "eye" : chaos < 0.8 ? "spiral" : "glyphs";
-  const size = 120 + chaos * 260;
-  const opacity = 0.04 + chaos * 0.12;
-  const drift = rb(10, 40) * (Math.random() < 0.5 ? -1 : 1);
-  const rot = rb(-10, 10);
-  const dur = 6 - Math.min(4, chaos * 4);
+// ===== Procedural Event Plan =====
+const EVENTS_COUNT = 520; // 500+ events
+const RAMP_DIVISOR = 60000; // chaos reaches 1 near 60k clicks
 
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity, y: [0, drift, 0], rotate: [rot, -rot, rot] }}
-      transition={{ duration: dur, repeat: Infinity, ease: "easeInOut" }}
-      style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none" }}
-    >
-      {which === "sigil" && (
-        <svg width={size} height={size} viewBox="0 0 200 200" style={{ filter: "drop-shadow(0 0 6px rgba(255,255,255,0.05))" }}>
-          <circle cx="100" cy="100" r="80" fill="none" stroke="white" strokeOpacity="0.32" />
-          <path d="M100 20 L120 180 L80 180 Z" fill="none" stroke="white" strokeOpacity="0.2" />
-          <circle cx="100" cy="100" r="6" fill="white" fillOpacity="0.35" />
-        </svg>
-      )}
-      {which === "eye" && (
-        <svg width={size} height={size} viewBox="0 0 200 200">
-          <ellipse cx="100" cy="100" rx="90" ry="55" fill="none" stroke="white" strokeOpacity="0.32" />
-          <circle cx="100" cy="100" r="22" fill="white" fillOpacity="0.28" />
-          <circle cx="100" cy="100" r="7" fill="black" fillOpacity="0.6" />
-        </svg>
-      )}
-      {which === "spiral" && (
-        <svg width={size} height={size} viewBox="0 0 200 200">
-          <path d="M100,100 m-75,0 a75,75 0 1,0 150,0 a75,75 0 1,0 -150,0" fill="none" stroke="white" strokeOpacity="0.25" />
-          <path d="M100,100 m-55,0 a55,55 0 1,0 110,0 a55,55 0 1,0 -110,0" fill="none" stroke="white" strokeOpacity="0.25" />
-          <path d="M100,100 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0" fill="none" stroke="white" strokeOpacity="0.25" />
-        </svg>
-      )}
-      {which === "glyphs" && (
-        <div style={{ fontSize: 140, letterSpacing: 6, opacity }}>
-          ⌘ ∴ ∷ ◌ ◍ ◐ ◑ ◒ ◓
-        </div>
-      )}
-    </motion.div>
-  );
-};
+function seededRNG(seed) {
+  // tiny LCG for deterministic variety per event index
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 0xffffffff;
+  };
+}
 
+function buildEventPlan(count = EVENTS_COUNT) {
+  const plan = [];
+  const adj = ["faint", "light", "thin", "quiet", "soft", "narrow", "cold", "warm", "loose", "woven", "odd", "patient", "curious", "tilted", "bent", "melted", "quantum", "shimmering", "fractal", "paper", "thermal", "burnt", "ghost"];
+  const obj = ["outline", "shadow", "staple", "barcode", "total", "subtotal", "ink", "paper curl", "smudge", "stamp", "glyph", "tear", "hole", "fold", "crease", "sticker", "receipt copy", "ghost line", "rewind", "duplicate", "silhouette", "price tag", "coupon", "cashier id", "register id", "item code", "time code", "inventory line"];
+  const act = ["appears", "grows", "slides", "twitches", "hides", "returns", "splits", "recombines", "burns a little", "prints sideways", "repeats", "smears", "crackles", "asks for a name", "hums", "breathes", "shifts left", "shifts right", "unprices itself", "doubles", "stutters", "jumps a line", "misaligns", "fades", "darkens", "inverts"]; 
+
+  let clicksAt = 10; // first event appears after 10 clicks
+  for (let i = 0; i < count; i++) {
+    const rng = seededRNG(i + 1337);
+    // Make early events close together, later ones spread out
+    const step = i < 20 ? 5 : i < 60 ? 10 : i < 120 ? 20 : i < 200 ? 30 : i < 300 ? 40 : 60;
+    clicksAt += step + Math.floor(rng() * Math.max(1, step * 0.5));
+
+    const title = `${pick(adj)} ${pick(obj)} ${pick(act)}`;
+
+    // Choose an effect bucket
+    const bucketRoll = rng();
+    let effect = "story";
+    if (bucketRoll < 0.14) effect = "moveButton";
+    else if (bucketRoll < 0.26) effect = "shatterButton";
+    else if (bucketRoll < 0.39) effect = "receiptVisual";
+    else if (bucketRoll < 0.49) effect = "addLine";
+    else if (bucketRoll < 0.57) effect = "glitch";
+    else if (bucketRoll < 0.66) effect = "ink";
+    else if (bucketRoll < 0.75) effect = "paper";
+    else if (bucketRoll < 0.8) effect = "burn";        // new burn edge bumps
+    else if (bucketRoll < 0.86) effect = "coupon";     // new coupon choices
+    else if (bucketRoll < 0.9) effect = "boss";        // new boss encounters
+    else if (bucketRoll < 0.96) effect = "barcode";
+    else if (bucketRoll < 0.99) effect = "qr";
+    else effect = "meta";
+
+    plan.push({ at: clicksAt, title, effect });
+  }
+  return plan;
+}
+
+// ===== App =====
 export default function App() {
-  // state
-  const [clicks, setClicks] = useState(() => Number(localStorage.getItem("tb-clicks") || 0));
+  // core counters
+  const [clicks, setClicks] = useState(() => Number(localStorage.getItem("rb-clicks") || 0));
   const [streak, setStreak] = useState(0);
-  const [feed, setFeed] = useState([]);
-  const [particles, setParticles] = useState([]);
-  const [glitch, setGlitch] = useState(false);
-  const [qState, setQState] = useState("stable");
-  const [devOpen, setDevOpen] = useState(false);
-  const [scramble, setScramble] = useState(false);
-  const [fake404, setFake404] = useState(false);
-  const [screenTear, setScreenTear] = useState(false);
 
+  // receipt data
+  const [lines, setLines] = useState([]); // { k, left, right, type }
+  const [notes, setNotes] = useState([]); // small centered notes
+  const [stamps, setStamps] = useState([]); // stickers on receipt
+  const [subtotal, setSubtotal] = useState(0);
+  const [tax, setTax] = useState(0);
+
+  // button visuals
+  const [btn, setBtn] = useState({ x: 0, y: 0, r: 0, s: 1, broken: false, hidden: false });
+  const [scramble, setScramble] = useState(false);
+
+  // overlays
+  const [tear, setTear] = useState(false);
+  const [fake404, setFake404] = useState(false);
+
+  // burn edges
+  const [burn, setBurn] = useState(0); // 0..1
+
+  // coupon system
+  const [couponOffer, setCouponOffer] = useState(null); // { id, opts: [...] }
+  const [activeMods, setActiveMods] = useState([]); // [{ id, type, label, ends }]
+
+  // boss system
+  const [boss, setBoss] = useState({ active: false, name: "", ends: 0, hp: 0, hpMax: 0 });
+
+  // dev
+  const [dev, setDev] = useState(false);
+
+  const planRef = useRef(buildEventPlan());
   const lastClickRef = useRef(0);
+
   const { blip } = useTinyAudio();
 
-  // chaos curve - reaches 1 near 50k clicks
-  const chaos = useMemo(() => clamp(clicks / 50000, 0, 1), [clicks]);
-
-  // environment color
-  const hue = (Date.now() * 0.01 + chaos * 240) % 360;
-  const sat = 30 + chaos * 50;
-  const light = Math.max(6, 16 - chaos * 10);
+  // chaos level based on clicks
+  const chaos = useMemo(() => clamp(clicks / RAMP_DIVISOR, 0, 1), [clicks]);
 
   useEffect(() => {
-    localStorage.setItem("tb-clicks", String(clicks));
+    localStorage.setItem("rb-clicks", String(clicks));
   }, [clicks]);
 
-  // particles and random events
+  // derived modifiers
+  const mods = useMemo(() => {
+    const now = Date.now();
+    const live = activeMods.filter((m) => m.ends > now);
+    const taxMult = live.some((m) => m.type === "taxHoliday") ? 0 : 1;
+    const stampBoost = 1 + live.filter((m) => m.type === "inkBoost").length; // each adds 1x
+    const buttonFloat = live.some((m) => m.type === "lowGravity");
+    return { live, taxMult, stampBoost, buttonFloat };
+  }, [activeMods]);
+
+  // cleanup expired mods
   useEffect(() => {
-    const tick = setInterval(() => {
-      if (Math.random() < 0.08 + chaos * 0.12) spawnParticles(pick(["pix", "frag", "tear", "glitch"]), Math.floor(rb(1, 4)));
+    const t = setInterval(() => {
+      setActiveMods((list) => list.filter((m) => m.ends > Date.now()));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
-      if (Math.random() < 0.035 + chaos * 0.06) {
-        const m = pick([
-          "The room inhales.",
-          "Pixels shed like rain.",
-          "Time hesitates.",
-          "You are observed.",
-          "A seam in the wall opens.",
-          "Something reverses.",
-          "You forget a second.",
-          "A small bell rings nowhere.",
-          "Shadows nod.",
-        ]);
-        pushFeed(m, "mystery");
-      }
+  // ===== Press handler =====
+  const press = useCallback(() => {
+    const now = performance.now();
+    if (now - lastClickRef.current < 12) return; // debounce
+    lastClickRef.current = now;
 
-      // scramble text pulses
-      if (Math.random() < 0.01 + chaos * 0.03) {
-        setScramble(true);
-        console.log("[event] scramble on");
-        setTimeout(() => {
-          setScramble(false);
-          console.log("[event] scramble off");
-        }, 1200 + chaos * 1200);
-      }
+    const freq = boss.active ? 420 : 200 + Math.floor(chaos * 420) + Math.floor(Math.random() * 50);
+    blip(freq, 0.05, scramble || boss.active ? "square" : "sine");
 
-      // fake 404 veil - rare
-      if (!fake404 && Math.random() < 0.002 + chaos * 0.003) {
-        setFake404(true);
-        console.log("[event] fake 404 shown");
-        setTimeout(() => {
-          setFake404(false);
-          console.log("[event] fake 404 hidden");
-        }, 2500 + chaos * 2000);
-      }
+    setClicks((c) => {
+      const nc = c + 1;
+      console.log("[press]", { clicks: nc });
+      return nc;
+    });
+    setStreak((s) => Math.min(999999, s + 1));
 
-      // screen tear slice - rare
-      if (!screenTear && Math.random() < 0.002 + chaos * 0.004) {
-        setScreenTear(true);
-        console.log("[event] screen tear");
-        setTimeout(() => setScreenTear(false), 1200);
-      }
+    // Boss damage
+    if (boss.active) {
+      setBoss((b) => {
+        const damage = 1; // could scale with streak
+        const nhp = Math.max(0, b.hp - damage);
+        return { ...b, hp: nhp };
+      });
+    }
 
-      // periodic glitch
-      if (Math.random() < 0.015 + chaos * 0.04) {
-        setGlitch(true);
-        pushFeed("Reality tears for a moment", "glitch");
-        console.log("[event] glitch on");
-        setTimeout(() => {
-          setGlitch(false);
-          console.log("[event] glitch off");
-        }, 2200 + chaos * 2800);
-      }
-    }, Math.max(300, 1800 - chaos * 1400));
-    return () => clearInterval(tick);
-  }, [chaos, fake404, screenTear]);
+    // tiny chance to spawn tear band on press at high chaos
+    if (Math.random() < 0.002 + chaos * 0.01) setTear(true);
+    if (tear) setTimeout(() => setTear(false), 900);
+  }, [chaos, scramble, tear, boss.active, blip]);
 
-  // keyboard controls
+  // keyboard
   useEffect(() => {
     const onKey = (e) => {
       if (e.code === "Space") {
         e.preventDefault();
         press();
       }
-      if (e.ctrlKey && e.shiftKey && e.code === "KeyB") setDevOpen((v) => !v);
+      if (e.ctrlKey && e.shiftKey && e.code === "KeyB") setDev((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [press]);
 
-  // logging chaos shifts
+  // helper: grant modifier
+  const grantMod = useCallback((type, label, seconds = 60) => {
+    const ends = Date.now() + seconds * 1000;
+    const id = `${type}-${ends}`;
+    setActiveMods((arr) => [{ id, type, label, ends }, ...arr]);
+    setLines((prev) => [{ k: `mod${ends}`, left: `${label} active`, right: `${seconds}s`, type: "sys" }, ...prev].slice(0, 80));
+  }, []);
+
+  // ===== Event processing =====
   useEffect(() => {
-    console.log("[chaos]", { clicks, chaos: Number(chaos.toFixed(3)) });
-  }, [clicks, chaos]);
+    if (clicks === 0) return;
+    const plan = planRef.current;
+    // find events that should fire now
+    const due = plan.filter((e) => e.at === clicks);
+    if (due.length === 0) return;
 
-  // utility
-  const pushFeed = (msg, type) => {
-    setFeed((f) => [{ id: Date.now(), msg, type, t: new Date().toLocaleTimeString() }, ...f].slice(0, 20));
-  };
+    due.forEach((ev) => {
+      console.log("[event]", ev.at, ev.effect, ev.title);
+      const timestamp = new Date().toLocaleTimeString();
 
-  const spawnParticles = (type, n = 3) => {
-    console.log("[particles] spawn", { type, n });
-    for (let i = 0; i < n; i++) {
-      const id = Date.now() + i;
-      setParticles((p) => [...p, { id, type, delay: i * 0.08 }]);
-    }
-  };
-
-  const press = useCallback(() => {
-    const now = performance.now();
-    if (now - lastClickRef.current < 10) return;
-    lastClickRef.current = now;
-
-    // audio
-    const freq = 220 + Math.floor(chaos * 480) + Math.floor(Math.random() * 60);
-    blip(freq, 0.05, qState === "stable" ? "sine" : "square");
-
-    // clicks and streak
-    setClicks((c) => {
-      const nc = c + 1;
-      console.log("[press] click", { next: nc });
-      return nc;
+      switch (ev.effect) {
+        case "story": {
+          setLines((prev) => [{ k: `s${ev.at}`, left: ev.title, right: "", type: "story" }, ...prev].slice(0, 80));
+          setNotes((n) => [
+            { k: `n${ev.at}`, msg: pick(["The room inhales.", "Paper remembers.", "Ink dries slower.", "The subtotal watches.", "You are observed."]) },
+            ...n
+          ].slice(0, 18));
+          break;
+        }
+        case "moveButton": {
+          const amp = mods.buttonFloat ? 1.8 : 1;
+          const nx = Math.round(rb(-160 * amp, 160 * amp));
+          const ny = Math.round(rb(-80 * amp, 120 * amp));
+          const nr = Math.round(rb(-25, 25));
+          const ns = clamp(1 + rb(-0.2, 0.25), 0.6, 1.4);
+          setBtn((b) => ({ ...b, x: nx, y: ny, r: nr, s: ns }));
+          setLines((prev) => [{ k: `m${ev.at}`, left: `Button moved`, right: `${nx},${ny}`, type: "sys" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "shatterButton": {
+          setBtn((b) => ({ ...b, broken: true }));
+          setTimeout(() => setBtn((b) => ({ ...b, broken: false })), 3000);
+          setLines((prev) => [{ k: `b${ev.at}`, left: `Button fragments`, right: "x6", type: "alert" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "receiptVisual": {
+          const count = 1 + Math.floor(Math.random() * (mods.stampBoost));
+          for (let i = 0; i < count; i++) {
+            const kind = pick(["SMUDGE", "STAMP", "MISPRINT", "REPRINT", "VOID*", "COPY", "PAID", "DUP"]);
+            setStamps((s) => [{ k: `st${ev.at}-${i}`, kind, x: rb(10, 260), y: rb(120, 620), r: rb(-18, 18), o: 0.06 + Math.random() * 0.14 }, ...s].slice(0, 30));
+          }
+          setLines((prev) => [{ k: `v${ev.at}`, left: `visual mark added`, right: timestamp, type: "vis" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "addLine": {
+          const price = Math.round(rb(1, 19)) + (Math.random() < 0.25 ? 0.99 : 0.49);
+          setLines((prev) => [{ k: `i${ev.at}`, left: ev.title.toUpperCase(), right: `$${price.toFixed(2)}`, type: "item" }, ...prev].slice(0, 80));
+          setSubtotal((s) => s + price);
+          setTax((t) => t + price * BASE_TAX * mods.taxMult);
+          break;
+        }
+        case "glitch": {
+          setScramble(true);
+          setTimeout(() => setScramble(false), 1400);
+          setLines((prev) => [{ k: `g${ev.at}`, left: "Text scrambles briefly", right: "", type: "glitch" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "ink": {
+          setNotes((n) => [{ k: `ink${ev.at}`, msg: pick(["Ink low", "Head cooling", "Thermal fade", "Ribbon drag"]) }, ...n].slice(0, 18));
+          break;
+        }
+        case "paper": {
+          setNotes((n) => [{ k: `pp${ev.at}`, msg: pick(["Paper curls", "Fold detected", "Edge warm", "Perforation loose"]) }, ...n].slice(0, 18));
+          break;
+        }
+        case "burn": {
+          setBurn((b) => clamp(b + 0.15, 0, 1));
+          setLines((prev) => [{ k: `brn${ev.at}`, left: "Edges singe a little", right: "*", type: "alert" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "coupon": {
+          // show 60s choice overlay
+          setCouponOffer({ id: `cp${ev.at}`, opts: [
+            { type: "taxHoliday", label: "Tax Holiday 60s" },
+            { type: "inkBoost", label: "Ink Surge 60s" },
+            { type: "lowGravity", label: "Low Gravity 60s" },
+          ]});
+          setLines((prev) => [{ k: `cp${ev.at}`, left: "Coupon offer printed", right: "60s", type: "sys" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "boss": {
+          const name = pick(["Receipt Keeper", "Subtotal Warden", "Ink Wraith", "Barcode Serpent", "Thermal Titan"]);
+          const dur = 45000; // 45s
+          const hpMax = 60 + Math.floor(chaos * 120);
+          setBoss({ active: true, name, ends: Date.now() + dur, hp: hpMax, hpMax });
+          setScramble(true);
+          setLines((prev) => [{ k: `boss${ev.at}`, left: `${name} approaches`, right: "45s", type: "alert" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "barcode": {
+          setLines((prev) => [{ k: `bc${ev.at}`, left: "Barcode updated", right: pad(ev.at, 5), type: "sys" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "qr": {
+          setLines((prev) => [{ k: `qr${ev.at}`, left: "QR refresh", right: pad(ev.at, 4), type: "sys" }, ...prev].slice(0, 80));
+          break;
+        }
+        case "meta": {
+          setFake404(true);
+          setTimeout(() => setFake404(false), 2200);
+          setLines((prev) => [{ k: `x${ev.at}`, left: "Page drifts from itself", right: "404", type: "alert" }, ...prev].slice(0, 80));
+          break;
+        }
+        default:
+          break;
+      }
     });
-    setStreak((s) => Math.min(999999, s + 1));
+  }, [clicks, mods]);
 
-    // particle ping
-    if (Math.random() < 0.1 + chaos * 0.2) spawnParticles(pick(["pix", "frag", "tear"]), 1);
+  // Boss timer and end handling
+  useEffect(() => {
+    if (!boss.active) return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      if (now >= boss.ends) {
+        // time up
+        const win = boss.hp <= 0;
+        if (win) {
+          setLines((prev) => [{ k: `bw${now}`, left: `${boss.name} defeated`, right: "PAID", type: "alert" }, ...prev].slice(0, 80));
+          setStamps((s) => [{ k: `paid${now}`, kind: "PAID", x: rb(40, 240), y: rb(120, 520), r: rb(-8, 8), o: 0.18 }, ...s].slice(0, 30));
+        } else {
+          setLines((prev) => [{ k: `bl${now}`, left: `${boss.name} escapes`, right: "VOID", type: "alert" }, ...prev].slice(0, 80));
+          setStamps((s) => [{ k: `void${now}`, kind: "VOID*", x: rb(40, 240), y: rb(120, 520), r: rb(-8, 8), o: 0.16 }, ...s].slice(0, 30));
+        }
+        setBoss({ active: false, name: "", ends: 0, hp: 0, hpMax: 0 });
+        setScramble(false);
+      }
+    }, 120);
+    return () => clearInterval(id);
+  }, [boss]);
 
-    // large events
-    if (clicks > 0 && clicks % 1000 === 0) {
-      pushFeed("Something rotates above you", "dim");
-      spawnParticles("glitch", 15);
-    }
-    if (clicks > 0 && clicks % 8000 === 0) {
-      setQState("superposition");
-      pushFeed("You exist in two places", "quantum");
-      console.log("[quantum] superposition");
-      setTimeout(() => {
-        setQState("stable");
-        console.log("[quantum] stable");
-      }, 9000);
-    }
-  }, [chaos, qState, clicks, blip]);
+  // totals recompute on change
+  const total = useMemo(() => subtotal + tax, [subtotal, tax]);
 
-  // story lines that grow with chaos
-  const lines = useMemo(() => {
-    const steps = Math.min(7, Math.floor(clicks / 120) + 1);
-    const pool = [
-      "You find a button in a room that remembers.",
-      "The room blinks. You were not always here.",
-      "Shadows move without owners.",
-      "Light forgets where to land.",
-      "The floor shifts. You feel heavier than usual.",
-      "You are observed by something patient.",
-      "A corner folds inward and keeps folding.",
-      "Air changes shape when you are not looking.",
-      "A quiet clicking answers your click.",
-    ];
-    const arr = Array.from({ length: steps }, () => pick(pool));
-    if (chaos > 0.65) arr.push("Letters detach from words and exit the sentence.");
-    if (chaos > 0.85) arr.push("Geometry asks for your name.");
-    return arr.slice(0, 8);
-  }, [clicks, chaos]);
-
-  // random section hiding decisions
-  const hideHeader = chaos > 0.75 && Math.random() < 0.02;
-  const hideLog = chaos > 0.6 && Math.random() < 0.025;
-  const hideStory = chaos > 0.5 && Math.random() < 0.02;
-
-  // transforms
-  const skew = chaos * 6;
-  const rot = Math.sin(Date.now() * 0.002) * chaos * 2;
-  const scale = 1 + Math.sin(Date.now() * 0.003) * chaos * 0.012;
-  const blur = chaos * 1.3;
-  const grain = 0.05 + chaos * 0.34;
-
-  // scramble helper
+  // ===== Render helpers =====
   const maybeScramble = (text) => {
     if (!scramble) return text;
     return text
       .split("")
-      .map((ch) => (Math.random() < 0.15 ? pick(["@", "#", "%", "&", "?", "∗", "∆"]) : ch))
+      .map((ch) => (Math.random() < 0.12 ? pick(["@", "#", "%", "&", "*", "?", "∴"]) : ch))
       .join("");
   };
+
+  // ===== UI =====
+  const paperHue = 0; // thermal paper near white
+  const paperLight = 100 - chaos * 8; // darker as chaos rises
+
+  // Active mods badges
+  const modBadges = (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginTop: 6 }}>
+      {mods.live.map((m) => (
+        <div key={m.id} style={{ fontSize: 10, border: "1px solid rgba(0,0,0,0.4)", padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.06)" }}>{m.label}</div>
+      ))}
+    </div>
+  );
 
   return (
     <div
       style={{
-        fontFamily: "Courier New, monospace",
         minHeight: "100vh",
-        position: "relative",
+        background: `radial-gradient(circle at 50% 0%, rgba(240,240,240,1) 0%, rgba(208,208,208,1) 70%, rgba(180,180,180,1) 100%)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         overflow: "hidden",
-        padding: 12,
-        color: chaos > 0.55 ? `hsl(${hue + 180}, 80%, 90%)` : "#e6e6e6",
-        background: `linear-gradient(180deg, hsl(${hue}, ${sat}%, ${light}%) 0%, hsl(${(hue + 36) % 360}, ${sat}%, ${Math.max(
-          4,
-          light - 6
-        )}%) 100%)`,
-        transform: glitch ? `rotate(${Math.sin(Date.now() * 0.01)}deg) scale(${1 + Math.sin(Date.now() * 0.02) * 0.012})` : "none",
-        filter: qState === "superposition" ? `hue-rotate(${Math.sin(Date.now() * 0.01) * 30}deg)` : "none",
+        padding: 20,
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
+        color: "#111",
       }}
     >
-      {/* global noise */}
-      <div
-        aria-hidden
-        style={{
-          pointerEvents: "none",
-          position: "fixed",
-          inset: 0,
-          backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,${grain}), rgba(255,255,255,0) 2px)`,
-          mixBlendMode: "overlay",
-          opacity: 0.07 + chaos * 0.22,
-          filter: `blur(${blur}px)`,
-          zIndex: 1,
-        }}
-      />
-
-      {/* rare fake 404 veil */}
+      {/* Fake 404 overlay */}
       <AnimatePresence>
         {fake404 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.95 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 9999,
-              background: "#0b0c10",
-              color: "#e8edf7",
-              display: "grid",
-              placeItems: "center",
-              textAlign: "center",
-              padding: 20,
-            }}
+            transition={{ duration: 0.25 }}
+            style={{ position: "fixed", inset: 0, background: "#0b0c10", color: "#e8edf7", display: "grid", placeItems: "center", zIndex: 100 }}
           >
-            <div>
+            <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 48, marginBottom: 10 }}>404</div>
-              <div style={{ fontSize: 16, opacity: 0.85 }}>
-                The page you are looking for has drifted. Please try again later.
+              <div style={{ opacity: 0.9 }}>The page you want has drifted. Try again later.</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tear band */}
+      <TearBand active={tear} />
+
+      {/* Receipt container */}
+      <motion.div
+        style={{
+          width: 340,
+          maxWidth: "100%",
+          background: `hsl(${paperHue}, 20%, ${paperLight}%)`,
+          boxShadow: "0 14px 40px rgba(0,0,0,0.25)",
+          borderRadius: 10,
+          position: "relative",
+        }}
+        animate={{ rotate: scramble ? rb(-0.6, 0.6) : 0, x: scramble ? rb(-2, 2) : 0 }}
+        transition={{ duration: 0.25 }}
+      >
+        {/* Burn edges overlay */}
+        <BurnEdges intensity={burn} />
+
+        {/* Perforation top */}
+        <div style={{ height: 14, background: `repeating-linear-gradient(90deg, transparent, transparent 8px, rgba(0,0,0,0.15) 8px, rgba(0,0,0,0.15) 10px)` }} />
+
+        {/* Receipt inner */}
+        <div style={{ padding: 14, paddingTop: 6 }}>
+          {/* Header */}
+          <div style={{ textAlign: "center", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 1 }}>THE BUTTON MART</div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>INFINITE RECEIPT SYSTEM</div>
+            <div style={{ fontSize: 10, opacity: 0.8 }}>TXN #{pad(clicks, 8)} • REG 07 • CASHIER 000</div>
+            <div style={{ fontSize: 10, opacity: 0.8 }}>{new Date().toLocaleString()}</div>
+          </div>
+
+          {/* Boss overlay within receipt */}
+          <AnimatePresence>
+            {boss.active && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                style={{
+                  border: "1px dashed rgba(0,0,0,0.5)",
+                  padding: 8,
+                  marginBottom: 8,
+                  background: "rgba(255,110,110,0.12)",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, textAlign: "center" }}>{boss.name}</div>
+                <div style={{ height: 8, background: "rgba(0,0,0,0.12)", borderRadius: 4, overflow: "hidden", marginTop: 6 }}>
+                  <div style={{ width: `${(1 - boss.hp / boss.hpMax) * 100}%`, height: "100%", background: "#d33" }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 4 }}>
+                  <div>HP {boss.hp}/{boss.hpMax}</div>
+                  <BossTimer ends={boss.ends} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Button zone */}
+          <div style={{ display: "grid", placeItems: "center", margin: "8px 0 12px 0" }}>
+            <div style={{ position: "relative", height: 140 }}>
+              {/* shards when broken */}
+              <AnimatePresence>
+                {btn.broken && Array.from({ length: 6 }).map((_, i) => (
+                  <motion.div
+                    key={`sh${i}`}
+                    initial={{ opacity: 0, x: 0, y: 0 }}
+                    animate={{ opacity: 1, x: rb(-80, 80), y: rb(-80, 80), rotate: rb(-90, 90) }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.6 }}
+                    style={{ position: "absolute", top: 60, left: 60, width: 20, height: 20, background: "#333", border: "1px solid #111" }}
+                  />
+                ))}
+              </AnimatePresence>
+
+              {/* main button */}
+              {!btn.hidden && (
+                <motion.button
+                  onClick={press}
+                  whileTap={{ scale: 0.94 }}
+                  animate={{ x: btn.x, y: btn.y, rotate: btn.r, scale: btn.s }}
+                  transition={{ type: "spring", stiffness: 140, damping: 12 }}
+                  style={{
+                    position: "absolute",
+                    left: 60,
+                    top: 60,
+                    width: 120,
+                    height: 120,
+                    borderRadius: scramble ? "22%" : "50%",
+                    border: "1px solid rgba(0,0,0,0.7)",
+                    background: boss.active ? "linear-gradient(180deg, #ff8c8c 0%, #c84040 100%)" : "linear-gradient(180deg, #f15f5f 0%, #b53030 100%)",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    letterSpacing: 1,
+                    textShadow: "0 1px 0 rgba(0,0,0,0.4)",
+                    cursor: "pointer",
+                    boxShadow: "0 8px 16px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  PRESS
+                  <div style={{ fontSize: 10, opacity: 0.9 }}>{fmt(clicks)}</div>
+                </motion.button>
+              )}
+            </div>
+          </div>
+
+          {/* Items title row */}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, borderTop: "1px dashed rgba(0,0,0,0.4)", paddingTop: 6, marginTop: 4 }}>
+            <div>ITEM</div>
+            <div>AMOUNT</div>
+          </div>
+
+          {/* Lines */}
+          <div style={{ maxHeight: 300, overflowY: "auto", paddingRight: 6 }}>
+            {lines.length === 0 && (
+              <div style={{ fontSize: 10, opacity: 0.6, textAlign: "center", padding: 8 }}>
+                Nothing prints yet. First ten clicks are quiet.
+              </div>
+            )}
+            {lines.map((ln) => (
+              <div key={ln.k} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "2px 0", borderBottom: "1px dotted rgba(0,0,0,0.08)" }}>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{maybeScramble(ln.left)}</div>
+                <div>{ln.right}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Notes center */}
+          {notes.length > 0 && (
+            <div style={{ textAlign: "center", fontSize: 10, opacity: 0.85, marginTop: 6 }}>
+              {notes.slice(0, 3).map((n) => (
+                <div key={n.k}>{maybeScramble(n.msg)}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Subtotals */}
+          <div style={{ borderTop: "1px dashed rgba(0,0,0,0.4)", marginTop: 6, paddingTop: 6, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>SUBTOTAL</div>
+              <div>${subtotal.toFixed(2)}</div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>TAX</div>
+              <div>${tax.toFixed(2)}</div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, borderTop: "1px dotted rgba(0,0,0,0.35)", marginTop: 4, paddingTop: 4 }}>
+              <div>TOTAL</div>
+              <div>${total.toFixed(2)}</div>
+            </div>
+            {mods.live.length > 0 && modBadges}
+          </div>
+
+          {/* Barcode and QR */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+            <Barcode seed={clicks} />
+            <QRish chaos={chaos} />
+          </div>
+
+          {/* Footer blocks */}
+          <div style={{ textAlign: "center", marginTop: 8 }}>
+            <div style={{ fontSize: 10 }}>TENDER: CASH</div>
+            <div style={{ fontSize: 10 }}>CHANGE DUE: $0.00</div>
+            <div style={{ fontSize: 10, opacity: 0.8 }}>Thank you for clicking</div>
+          </div>
+
+          {/* Stamps overlay */}
+          <div style={{ position: "relative", height: 0 }}>
+            {stamps.map((s) => (
+              <div key={s.k} style={{ position: "absolute", left: s.x, top: s.y, transform: `rotate(${s.r}deg)`, opacity: s.o, fontSize: 72, fontWeight: 900, letterSpacing: 2, color: "#000" }}>
+                {s.kind}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Perforation bottom */}
+        <div style={{ height: 14, background: `repeating-linear-gradient(90deg, transparent, transparent 8px, rgba(0,0,0,0.15) 8px, rgba(0,0,0,0.15) 10px)` }} />
+      </motion.div>
+
+      {/* Coupon overlay */}
+      <AnimatePresence>
+        {couponOffer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center", zIndex: 120 }}
+          >
+            <div style={{ width: 320, background: "#fff", color: "#111", borderRadius: 10, padding: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.4)" }}>
+              <div style={{ textAlign: "center", fontWeight: 800, fontSize: 14, marginBottom: 8 }}>COUPON CHOICES</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {couponOffer.opts.map((o) => (
+                  <button
+                    key={o.type}
+                    onClick={() => {
+                      grantMod(o.type, o.label, 60);
+                      setCouponOffer(null);
+                    }}
+                    style={{
+                      border: "1px solid rgba(0,0,0,0.3)",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#fafafa",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* screen tear slice */}
+      {/* Dev panel */}
       <AnimatePresence>
-        {screenTear && (
+        {dev && (
           <motion.div
-            initial={{ y: "-100%" }}
-            animate={{ y: "100%" }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.7, ease: "linear" }}
-            style={{
-              position: "fixed",
-              left: 0,
-              right: 0,
-              height: 80,
-              top: 0,
-              zIndex: 5000,
-              background:
-                "repeating-linear-gradient(90deg, rgba(255,255,255,0.15), rgba(255,255,255,0.15) 6px, rgba(255,255,255,0.05) 6px, rgba(255,255,255,0.05) 12px)",
-              mixBlendMode: "screen",
-              filter: "blur(1px)",
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* weird overlay */}
-      <WeirdOverlay chaos={chaos} />
-
-      {/* particles */}
-      <AnimatePresence>
-        {particles.map((p) => (
-          <Falling
-            key={p.id}
-            type={p.type}
-            delay={p.delay}
-            onDone={() => setParticles((arr) => arr.filter((x) => x.id !== p.id))}
-          />
-        ))}
-      </AnimatePresence>
-
-      {/* header */}
-      {!hideHeader && (
-        <motion.div
-          style={{
-            textAlign: "center",
-            borderBottom: "2px dashed rgba(255,255,255,0.3)",
-            paddingBottom: 10,
-            marginBottom: 16,
-            fontSize: 12,
-            letterSpacing: 1,
-            position: "relative",
-            zIndex: 2,
-          }}
-          animate={{ x: [0, chaos * 4, 0, -chaos * 4, 0], rotate: [0, rot, 0], skewX: skew }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <div style={{ fontSize: 16, fontWeight: 700 }}>═══ THE BUTTON ═══</div>
-          <div>PROGRESSIVE CHAOS SYSTEM</div>
-          <div>CLICKS: {clicks.toLocaleString()}</div>
-          <div>STREAK: {streak.toLocaleString()}</div>
-          <div>STATE: {qState.toUpperCase()}</div>
-          <div>{new Date().toLocaleString()}</div>
-        </motion.div>
-      )}
-
-      {/* main button */}
-      <div style={{ display: "flex", justifyContent: "center", margin: "20px 0", position: "relative", zIndex: 3 }}>
-        <motion.button
-          onClick={press}
-          whileTap={{ scale: 0.95 }}
-          animate={{
-            scale,
-            boxShadow: `0 0 ${glitch ? 40 : 16}px hsl(${hue}, 80%, 60%)`,
-            x: chaos * rb(-12, 12),
-            y: chaos * rb(-8, 8),
-            rotate: rot * 1.3,
-            filter: scramble ? "contrast(1.3) saturate(1.4)" : "none",
-          }}
-          transition={{ type: "spring", stiffness: 140, damping: 12 }}
-          style={{
-            width: 130,
-            height: 130,
-            borderRadius: chaos > 0.35 ? `${40 + Math.sin(Date.now() * 0.01) * 12}%` : "50%",
-            border: `2px solid hsl(${hue}, 70%, 60%)`,
-            background: `radial-gradient(circle at 40% 40%, hsl(${hue}, 80%, 50%) 0%, hsl(${(hue + 60) % 360}, 70%, 40%) 50%, hsl(${(hue + 120) % 360}, 60%, 30%) 100%)`,
-            color: "white",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textShadow: "0 0 6px rgba(0,0,0,0.45)",
-            userSelect: "none",
-          }}
-        >
-          <div style={{ fontSize: 10, opacity: 0.85 }}>{maybeScramble("PRESS")}</div>
-          <div style={{ fontSize: 18 }}>{clicks.toLocaleString()}</div>
-          {streak > 5 && <div style={{ fontSize: 9 }}>x{streak.toLocaleString()}</div>}
-        </motion.button>
-      </div>
-
-      {/* activity log */}
-      {!hideLog && (
-        <motion.div
-          style={{
-            border: "1px dashed rgba(255,255,255,0.3)",
-            padding: 10,
-            marginBottom: 14,
-            fontSize: 10,
-            maxHeight: 200,
-            overflowY: "auto",
-            position: "relative",
-            zIndex: 2,
-          }}
-          animate={{ x: [0, -chaos * 2, 0, chaos * 2, 0] }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <div style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}>─── ACTIVITY LOG ───</div>
-          {feed.length === 0 ? (
-            <div style={{ textAlign: "center", opacity: 0.6, padding: 10 }}>{maybeScramble("Click the button to begin")}</div>
-          ) : (
-            feed.slice(0, 10).map((item, idx) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.02 }}
-                style={{
-                  padding: "4px 0",
-                  borderBottom: "1px dotted rgba(255,255,255,0.12)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  opacity: 1 - idx * 0.08,
-                  filter: idx > 5 ? `blur(${chaos * 0.7}px)` : "none",
-                }}
-              >
-                <span>{maybeScramble(item.msg)}</span>
-                <span style={{ fontSize: 8, opacity: 0.6 }}>{item.t}</span>
-              </motion.div>
-            ))
-          )}
-        </motion.div>
-      )}
-
-      {/* chronicle */}
-      {!hideStory && (
-        <motion.div
-          style={{
-            border: "1px dashed rgba(255,255,255,0.3)",
-            padding: 10,
-            marginBottom: 14,
-            fontSize: 11,
-            position: "relative",
-            zIndex: 2,
-          }}
-          animate={{ rotate: rot * 0.25, skewX: skew * 0.3 }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <div style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}>─── CHRONICLE ───</div>
-          {lines.map((line, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: i * 0.15 }}
-              style={{
-                marginBottom: 6,
-                padding: 6,
-                background: "rgba(255,255,255,0.04)",
-                borderLeft: `2px solid hsl(${(hue + i * 30) % 360}, 60%, 50%)`,
-                paddingLeft: 8,
-                lineHeight: 1.4,
-                filter: i > 2 ? `hue-rotate(${chaos * 40}deg)` : "none",
-              }}
-            >
-              {maybeScramble(line)}
-            </motion.div>
-          ))}
-        </motion.div>
-      )}
-
-      {/* footer */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 10,
-          left: 10,
-          right: 10,
-          zIndex: 6,
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: 860,
-            background: `rgba(10,12,16,${0.74 + chaos * 0.1})`,
-            border: "1px solid rgba(255,255,255,0.26)",
-            boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
-            borderRadius: 10,
-            padding: "10px 14px",
-            textAlign: "center",
-            fontSize: 11,
-            color: "#eaf0ff",
-            backdropFilter: "blur(8px)",
-          }}
-        >
-          <div>REALITY STATUS: {glitch ? "CORRUPTED" : "STABLE"}</div>
-          <div>QUANTUM STATE: {qState.toUpperCase()}</div>
-          <div style={{ marginTop: 4, fontSize: 10 }}>
-            {chaos < 0.1 && "THE JOURNEY BEGINS"}
-            {chaos >= 0.1 && chaos < 0.3 && "REALITY SHIFTS"}
-            {chaos >= 0.3 && chaos < 0.5 && "BOUNDARIES BLUR"}
-            {chaos >= 0.5 && chaos < 0.7 && "DIMENSIONS INTERSECT"}
-            {chaos >= 0.7 && chaos < 0.9 && "INFINITY APPROACHES"}
-            {chaos >= 0.9 && "TRANSCENDENCE IMMINENT"}
-          </div>
-          {clicks > 20 && <div style={{ fontSize: 10, marginTop: 4 }}>Spacebar: click - Ctrl+Shift+B: dev panel</div>}
-        </div>
-      </div>
-
-      {/* dev panel */}
-      <AnimatePresence>
-        {devOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            style={{
-              position: "fixed",
-              right: 12,
-              top: 12,
-              zIndex: 7,
-              background: "rgba(20,20,26,0.92)",
-              color: "#fff",
-              padding: 12,
-              border: "1px solid rgba(255,255,255,0.22)",
-              borderRadius: 10,
-              width: 260,
-              fontSize: 12,
-            }}
+            exit={{ opacity: 0, y: 12 }}
+            style={{ position: "fixed", right: 16, top: 16, background: "rgba(0,0,0,0.86)", color: "#fff", padding: 12, borderRadius: 8, fontSize: 12, zIndex: 200 }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Dev</div>
-            <button
-              onClick={() => {
-                setClicks(0);
-                setStreak(0);
-                setFeed([]);
-                console.log("[dev] reset");
-              }}
-              style={{ display: "block", width: "100%", marginBottom: 6 }}
-            >
-              Reset
-            </button>
-            <button
-              onClick={() => {
-                setGlitch((v) => !v);
-                console.log("[dev] toggle glitch");
-              }}
-              style={{ display: "block", width: "100%", marginBottom: 6 }}
-            >
-              Toggle glitch
-            </button>
-            <button
-              onClick={() => {
-                setQState((s) => (s === "stable" ? "superposition" : "stable"));
-                console.log("[dev] toggle quantum");
-              }}
-              style={{ display: "block", width: "100%" }}
-            >
-              Toggle quantum
-            </button>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Dev</div>
+            <button onClick={() => setClicks(0)} style={{ display: "block", width: "100%", marginBottom: 6 }}>Reset clicks</button>
+            <button onClick={() => setBtn((b) => ({ ...b, hidden: !b.hidden }))} style={{ display: "block", width: "100%", marginBottom: 6 }}>Toggle button</button>
+            <button onClick={() => setScramble((v) => !v)} style={{ display: "block", width: "100%", marginBottom: 6 }}>Toggle scramble</button>
+            <button onClick={() => setLines([])} style={{ display: "block", width: "100%", marginBottom: 6 }}>Clear lines</button>
+            <button onClick={() => setBurn((x) => clamp(x + 0.2, 0, 1))} style={{ display: "block", width: "100%", marginBottom: 6 }}>Add burn</button>
+            <button onClick={() => setCouponOffer({ id: "manual", opts: [{ type: "taxHoliday", label: "Tax Holiday 60s" }, { type: "inkBoost", label: "Ink Surge 60s" }, { type: "lowGravity", label: "Low Gravity 60s" }] })} style={{ display: "block", width: "100%", marginBottom: 6 }}>Test coupon</button>
+            <button onClick={() => setBoss({ active: true, name: "Test Boss", ends: Date.now() + 30000, hp: 40, hpMax: 40 })} style={{ display: "block", width: "100%" }}>Test boss</button>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* watermark */}
-      {chaos > 0.82 && (
-        <div
-          aria-hidden
-          style={{
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            fontSize: 200,
-            opacity: 0.02,
-            pointerEvents: "none",
-            zIndex: 0,
-            animation: `spin ${10 + Math.sin(Date.now() * 0.001) * 5}s linear infinite`,
-          }}
-        >
-          ∞
-        </div>
-      )}
-
-      {/* styles */}
-      <style>{`
-        @keyframes spin { 
-          from { transform: translate(-50%, -50%) rotate(0deg); }
-          to { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 2px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.5); }
-      `}</style>
     </div>
   );
 }
+
+function BossTimer({ ends }) {
+  const [left, setLeft] = useState(Math.max(0, ends - Date.now()));
+  useEffect(() => {
+    const id = setInterval(() => setLeft(Math.max(0, ends - Date.now())), 120);
+    return () => clearInterval(id);
+  }, [ends]);
+  const s = Math.ceil(left / 1000);
+  return <div>TIME {s}s</div>;
+}
+
 
