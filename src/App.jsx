@@ -2,22 +2,21 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 
 /*
-  THEBUTTON - Progressive Chaos Experience
-  - Clicks drive CHAOS from 0 to 1
-  - UI drift, skew, blur, color shift, and section breakage scale with CHAOS
-  - Occasional "glitch" events hide or scramble parts of the UI
-  - Subtle SVG weird images float behind everything
-  - Spacebar triggers the button
-  - Ctrl+Shift+B opens a tiny dev panel
-  - Console logs added at all key points
+  THEBUTTON - Viral Progressive Chaos Experience
+  - Calm at start, ramps to wild as clicks rise
+  - Chaos influences drift, blur, skew, color shift, hidden sections, scrambled text
+  - Rare events: fake 404 veil, screen tear, UI melt, quantum split
+  - Particles, scanline grain, low opacity weird SVGs
+  - Spacebar triggers press, Ctrl+Shift+B toggles dev panel
+  - Console logs sprinkled throughout for debugging
 */
 
-// ---------- helpers ----------
+// helpers
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const rb = (min, max) => Math.random() * (max - min) + min;
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// ---------- audio (simple blips) ----------
+// tiny audio
 function useTinyAudio() {
   const ctxRef = useRef(null);
   const enabledRef = useRef(false);
@@ -49,7 +48,7 @@ function useTinyAudio() {
     osc.type = type;
     osc.frequency.setValueAtTime(f, t);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.15, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     osc.connect(g);
     g.connect(gainRef.current);
@@ -60,7 +59,7 @@ function useTinyAudio() {
   return { blip };
 }
 
-// ---------- particles ----------
+// particles
 const Falling = ({ type, delay = 0, onDone }) => {
   const startX = Math.random() * window.innerWidth;
   const size = rb(2, 8);
@@ -84,7 +83,7 @@ const Falling = ({ type, delay = 0, onDone }) => {
   );
 };
 
-// ---------- weird SVG overlays ----------
+// low opacity weird overlays
 const WeirdOverlay = ({ chaos }) => {
   const which = chaos < 0.25 ? "sigil" : chaos < 0.5 ? "eye" : chaos < 0.8 ? "spiral" : "glyphs";
   const size = 120 + chaos * 260;
@@ -131,7 +130,7 @@ const WeirdOverlay = ({ chaos }) => {
 };
 
 export default function App() {
-  // core state
+  // state
   const [clicks, setClicks] = useState(() => Number(localStorage.getItem("tb-clicks") || 0));
   const [streak, setStreak] = useState(0);
   const [feed, setFeed] = useState([]);
@@ -139,17 +138,17 @@ export default function App() {
   const [glitch, setGlitch] = useState(false);
   const [qState, setQState] = useState("stable");
   const [devOpen, setDevOpen] = useState(false);
+  const [scramble, setScramble] = useState(false);
+  const [fake404, setFake404] = useState(false);
+  const [screenTear, setScreenTear] = useState(false);
 
   const lastClickRef = useRef(0);
   const { blip } = useTinyAudio();
 
-  // chaos derived from clicks
-  const chaos = useMemo(() => {
-    const v = clamp(clicks / 60000, 0, 1); // reach 1 near 60k clicks
-    return v;
-  }, [clicks]);
+  // chaos curve - reaches 1 near 50k clicks
+  const chaos = useMemo(() => clamp(clicks / 50000, 0, 1), [clicks]);
 
-  // environment colors
+  // environment color
   const hue = (Date.now() * 0.01 + chaos * 240) % 360;
   const sat = 30 + chaos * 50;
   const light = Math.max(6, 16 - chaos * 10);
@@ -158,12 +157,11 @@ export default function App() {
     localStorage.setItem("tb-clicks", String(clicks));
   }, [clicks]);
 
-  // random events scale with chaos
+  // particles and random events
   useEffect(() => {
     const tick = setInterval(() => {
-      if (Math.random() < 0.08 + chaos * 0.12) {
-        spawnParticles(pick(["pix", "frag", "tear", "glitch"]), Math.floor(rb(1, 4)));
-      }
+      if (Math.random() < 0.08 + chaos * 0.12) spawnParticles(pick(["pix", "frag", "tear", "glitch"]), Math.floor(rb(1, 4)));
+
       if (Math.random() < 0.035 + chaos * 0.06) {
         const m = pick([
           "The room inhales.",
@@ -173,9 +171,40 @@ export default function App() {
           "A seam in the wall opens.",
           "Something reverses.",
           "You forget a second.",
+          "A small bell rings nowhere.",
+          "Shadows nod.",
         ]);
         pushFeed(m, "mystery");
       }
+
+      // scramble text pulses
+      if (Math.random() < 0.01 + chaos * 0.03) {
+        setScramble(true);
+        console.log("[event] scramble on");
+        setTimeout(() => {
+          setScramble(false);
+          console.log("[event] scramble off");
+        }, 1200 + chaos * 1200);
+      }
+
+      // fake 404 veil - rare
+      if (!fake404 && Math.random() < 0.002 + chaos * 0.003) {
+        setFake404(true);
+        console.log("[event] fake 404 shown");
+        setTimeout(() => {
+          setFake404(false);
+          console.log("[event] fake 404 hidden");
+        }, 2500 + chaos * 2000);
+      }
+
+      // screen tear slice - rare
+      if (!screenTear && Math.random() < 0.002 + chaos * 0.004) {
+        setScreenTear(true);
+        console.log("[event] screen tear");
+        setTimeout(() => setScreenTear(false), 1200);
+      }
+
+      // periodic glitch
       if (Math.random() < 0.015 + chaos * 0.04) {
         setGlitch(true);
         pushFeed("Reality tears for a moment", "glitch");
@@ -183,13 +212,13 @@ export default function App() {
         setTimeout(() => {
           setGlitch(false);
           console.log("[event] glitch off");
-        }, 2500 + chaos * 3000);
+        }, 2200 + chaos * 2800);
       }
-    }, Math.max(350, 1800 - chaos * 1300));
+    }, Math.max(300, 1800 - chaos * 1400));
     return () => clearInterval(tick);
-  }, [chaos]);
+  }, [chaos, fake404, screenTear]);
 
-  // keyboard
+  // keyboard controls
   useEffect(() => {
     const onKey = (e) => {
       if (e.code === "Space") {
@@ -202,6 +231,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [press]);
 
+  // logging chaos shifts
+  useEffect(() => {
+    console.log("[chaos]", { clicks, chaos: Number(chaos.toFixed(3)) });
+  }, [clicks, chaos]);
+
+  // utility
   const pushFeed = (msg, type) => {
     setFeed((f) => [{ id: Date.now(), msg, type, t: new Date().toLocaleTimeString() }, ...f].slice(0, 20));
   };
@@ -219,24 +254,27 @@ export default function App() {
     if (now - lastClickRef.current < 10) return;
     lastClickRef.current = now;
 
-    // visual and audio
+    // audio
     const freq = 220 + Math.floor(chaos * 480) + Math.floor(Math.random() * 60);
     blip(freq, 0.05, qState === "stable" ? "sine" : "square");
 
+    // clicks and streak
     setClicks((c) => {
       const nc = c + 1;
-      console.log("[press] click", { nc });
+      console.log("[press] click", { next: nc });
       return nc;
     });
     setStreak((s) => Math.min(999999, s + 1));
 
-    // occasional fun
-    if (Math.random() < 0.12 + chaos * 0.15) spawnParticles(pick(["pix", "frag", "tear"]), 1);
+    // particle ping
+    if (Math.random() < 0.1 + chaos * 0.2) spawnParticles(pick(["pix", "frag", "tear"]), 1);
+
+    // large events
     if (clicks > 0 && clicks % 1000 === 0) {
       pushFeed("Something rotates above you", "dim");
       spawnParticles("glitch", 15);
     }
-    if (clicks > 0 && clicks % 10000 === 0) {
+    if (clicks > 0 && clicks % 8000 === 0) {
       setQState("superposition");
       pushFeed("You exist in two places", "quantum");
       console.log("[quantum] superposition");
@@ -247,32 +285,46 @@ export default function App() {
     }
   }, [chaos, qState, clicks, blip]);
 
-  // milestones text
+  // story lines that grow with chaos
   const lines = useMemo(() => {
-    const steps = Math.min(6, Math.floor(clicks / 120) + 1);
-    const a = [
+    const steps = Math.min(7, Math.floor(clicks / 120) + 1);
+    const pool = [
       "You find a button in a room that remembers.",
       "The room blinks. You were not always here.",
       "Shadows move without owners.",
       "Light forgets where to land.",
       "The floor shifts. You feel heavier than usual.",
-      "You are observed by something reasonable and patient.",
+      "You are observed by something patient.",
       "A corner folds inward and keeps folding.",
+      "Air changes shape when you are not looking.",
+      "A quiet clicking answers your click.",
     ];
-    return Array.from({ length: steps }, () => pick(a));
-  }, [clicks]);
+    const arr = Array.from({ length: steps }, () => pick(pool));
+    if (chaos > 0.65) arr.push("Letters detach from words and exit the sentence.");
+    if (chaos > 0.85) arr.push("Geometry asks for your name.");
+    return arr.slice(0, 8);
+  }, [clicks, chaos]);
 
-  // UI section breakage schedule
+  // random section hiding decisions
   const hideHeader = chaos > 0.75 && Math.random() < 0.02;
   const hideLog = chaos > 0.6 && Math.random() < 0.025;
   const hideStory = chaos > 0.5 && Math.random() < 0.02;
 
-  // base transforms from chaos
+  // transforms
   const skew = chaos * 6;
   const rot = Math.sin(Date.now() * 0.002) * chaos * 2;
   const scale = 1 + Math.sin(Date.now() * 0.003) * chaos * 0.012;
   const blur = chaos * 1.3;
   const grain = 0.05 + chaos * 0.34;
+
+  // scramble helper
+  const maybeScramble = (text) => {
+    if (!scramble) return text;
+    return text
+      .split("")
+      .map((ch) => (Math.random() < 0.15 ? pick(["@", "#", "%", "&", "?", "∗", "∆"]) : ch))
+      .join("");
+  };
 
   return (
     <div
@@ -305,6 +357,60 @@ export default function App() {
           zIndex: 1,
         }}
       />
+
+      {/* rare fake 404 veil */}
+      <AnimatePresence>
+        {fake404 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.95 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              background: "#0b0c10",
+              color: "#e8edf7",
+              display: "grid",
+              placeItems: "center",
+              textAlign: "center",
+              padding: 20,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 48, marginBottom: 10 }}>404</div>
+              <div style={{ fontSize: 16, opacity: 0.85 }}>
+                The page you are looking for has drifted. Please try again later.
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* screen tear slice */}
+      <AnimatePresence>
+        {screenTear && (
+          <motion.div
+            initial={{ y: "-100%" }}
+            animate={{ y: "100%" }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7, ease: "linear" }}
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              height: 80,
+              top: 0,
+              zIndex: 5000,
+              background:
+                "repeating-linear-gradient(90deg, rgba(255,255,255,0.15), rgba(255,255,255,0.15) 6px, rgba(255,255,255,0.05) 6px, rgba(255,255,255,0.05) 12px)",
+              mixBlendMode: "screen",
+              filter: "blur(1px)",
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* weird overlay */}
       <WeirdOverlay chaos={chaos} />
@@ -346,17 +452,18 @@ export default function App() {
         </motion.div>
       )}
 
-      {/* button */}
+      {/* main button */}
       <div style={{ display: "flex", justifyContent: "center", margin: "20px 0", position: "relative", zIndex: 3 }}>
         <motion.button
           onClick={press}
           whileTap={{ scale: 0.95 }}
           animate={{
-            scale: 1 + (chaos > 0.2 ? 0.02 : 0) + (glitch ? 0.03 : 0),
+            scale,
             boxShadow: `0 0 ${glitch ? 40 : 16}px hsl(${hue}, 80%, 60%)`,
             x: chaos * rb(-12, 12),
             y: chaos * rb(-8, 8),
             rotate: rot * 1.3,
+            filter: scramble ? "contrast(1.3) saturate(1.4)" : "none",
           }}
           transition={{ type: "spring", stiffness: 140, damping: 12 }}
           style={{
@@ -377,7 +484,7 @@ export default function App() {
             userSelect: "none",
           }}
         >
-          <div style={{ fontSize: 10, opacity: 0.85 }}>PRESS</div>
+          <div style={{ fontSize: 10, opacity: 0.85 }}>{maybeScramble("PRESS")}</div>
           <div style={{ fontSize: 18 }}>{clicks.toLocaleString()}</div>
           {streak > 5 && <div style={{ fontSize: 9 }}>x{streak.toLocaleString()}</div>}
         </motion.button>
@@ -401,7 +508,7 @@ export default function App() {
         >
           <div style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}>─── ACTIVITY LOG ───</div>
           {feed.length === 0 ? (
-            <div style={{ textAlign: "center", opacity: 0.6, padding: 10 }}>Click the button to begin</div>
+            <div style={{ textAlign: "center", opacity: 0.6, padding: 10 }}>{maybeScramble("Click the button to begin")}</div>
           ) : (
             feed.slice(0, 10).map((item, idx) => (
               <motion.div
@@ -419,7 +526,7 @@ export default function App() {
                   filter: idx > 5 ? `blur(${chaos * 0.7}px)` : "none",
                 }}
               >
-                <span>{item.msg}</span>
+                <span>{maybeScramble(item.msg)}</span>
                 <span style={{ fontSize: 8, opacity: 0.6 }}>{item.t}</span>
               </motion.div>
             ))
@@ -427,7 +534,7 @@ export default function App() {
         </motion.div>
       )}
 
-      {/* story */}
+      {/* chronicle */}
       {!hideStory && (
         <motion.div
           style={{
@@ -458,13 +565,13 @@ export default function App() {
                 filter: i > 2 ? `hue-rotate(${chaos * 40}deg)` : "none",
               }}
             >
-              {line}
+              {maybeScramble(line)}
             </motion.div>
           ))}
         </motion.div>
       )}
 
-      {/* footer - high contrast for readability */}
+      {/* footer */}
       <div
         style={{
           position: "fixed",
@@ -560,7 +667,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* watermark at high chaos */}
+      {/* watermark */}
       {chaos > 0.82 && (
         <div
           aria-hidden
@@ -594,3 +701,4 @@ export default function App() {
     </div>
   );
 }
+
