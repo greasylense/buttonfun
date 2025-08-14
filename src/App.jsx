@@ -2,830 +2,594 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 
 /*
-  THEBUTTON – Infinite Receipt Clicker Experience
-  - Receipt-style mobile-first design
-  - 1000s of iterations and possibilities
-  - Dynamic falling particles and effects
-  - Procedural content generation
-  - Nearly impossible to reach the end
-  - Exponential complexity scaling
+  THEBUTTON - Progressive Chaos Experience
+  - Clicks drive CHAOS from 0 to 1
+  - UI drift, skew, blur, color shift, and section breakage scale with CHAOS
+  - Occasional "glitch" events hide or scramble parts of the UI
+  - Subtle SVG weird images float behind everything
+  - Spacebar triggers the button
+  - Ctrl+Shift+B opens a tiny dev panel
+  - Console logs added at all key points
 */
 
-// Utility helpers
+// ---------- helpers ----------
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const lerp = (a, b, t) => a + (b - a) * t;
-const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const randomBetween = (min, max) => Math.random() * (max - min) + min;
-const formatNumber = (n) => n > 999999 ? `${(n/1000000).toFixed(1)}M` : n > 999 ? `${(n/1000).toFixed(1)}K` : n.toString();
+const rb = (min, max) => Math.random() * (max - min) + min;
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// Massive expansion of currencies (20+ types)
-const CURRENCIES = {
-  clicks: 'Clicks',
-  echoes: 'Echoes', 
-  whispers: 'Whispers',
-  fragments: 'Fragments',
-  void: 'Void Energy',
-  dreams: 'Dream Threads',
-  pixels: 'Pixels',
-  glitches: 'Glitches',
-  memories: 'Memories',
-  essence: 'Essence',
-  quantum: 'Quantum Bits',
-  stardust: 'Stardust',
-  tears: 'Digital Tears',
-  shadows: 'Shadow Essence',
-  light: 'Pure Light',
-  chaos: 'Chaos Energy',
-  order: 'Order Crystals',
-  time: 'Time Shards',
-  space: 'Space Dust',
-  reality: 'Reality Fragments',
-  infinity: 'Infinity Points',
-  transcendence: 'Transcendence'
-};
+// ---------- audio (simple blips) ----------
+function useTinyAudio() {
+  const ctxRef = useRef(null);
+  const enabledRef = useRef(false);
+  const gainRef = useRef(null);
 
-// Exponential milestone system (500+ milestones)
-const generateMilestones = () => {
-  const milestones = [];
-  const messages = [
-    "Hello.", "Keep going.", "The button notices you.", "You feel watched.", 
-    "Something clicks back.", "The air thickens.", "You hear whispers.",
-    "A door creaks open.", "The button watches back.", "You crossed a thin place.",
-    "The room breathes with you.", "Reality bends slightly.", "Time hiccups.",
-    "The void whispers your name.", "Dreams bleed into reality.", "Pixels fall like rain.",
-    "Glitches multiply in the corners.", "Memories fragment and scatter.",
-    "Essence flows between dimensions.", "Quantum uncertainty spreads.",
-    "Stardust coalesces around you.", "Digital tears form and fall.",
-    "Shadows dance without light.", "Pure light pierces the darkness.",
-    "Chaos and order spiral together.", "Time shards reflect infinity.",
-    "Space dust settles on your soul.", "Reality fragments into possibility.",
-    "Infinity unfolds before you.", "Transcendence awaits."
-  ];
-  
-  // Generate exponentially spaced milestones
-  for (let i = 0; i < 500; i++) {
-    const baseValue = Math.floor(Math.pow(1.1 + (i * 0.001), i + 1));
-    const milestone = {
-      at: baseValue,
-      msg: randomChoice(messages) + (Math.random() < 0.3 ? ` [${Math.floor(Math.random() * 9999)}]` : ''),
-      type: randomChoice(['whisper', 'line', 'reward', 'glitch', 'story', 'unlock', 'secret', 'dimensional', 'quantum', 'transcendent']),
-      rewards: generateRandomRewards(i)
+  useEffect(() => {
+    const enable = () => {
+      if (!ctxRef.current) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        ctxRef.current = new Ctx();
+        gainRef.current = ctxRef.current.createGain();
+        gainRef.current.gain.value = 0.18;
+        gainRef.current.connect(ctxRef.current.destination);
+      }
+      enabledRef.current = true;
+      console.log("[audio] enabled");
     };
-    milestones.push(milestone);
-  }
-  
-  return milestones;
-};
+    window.addEventListener("pointerdown", enable, { once: true });
+    window.addEventListener("keydown", enable, { once: true });
+  }, []);
 
-const generateRandomRewards = (level) => {
-  const rewards = {};
-  const currencies = Object.keys(CURRENCIES);
-  const numRewards = Math.min(1 + Math.floor(level / 50), 5);
-  
-  for (let i = 0; i < numRewards; i++) {
-    const currency = randomChoice(currencies);
-    const amount = Math.floor(Math.pow(1.2, level) * (1 + Math.random() * 2));
-    rewards[currency] = (rewards[currency] || 0) + amount;
-  }
-  
-  return rewards;
-};
+  const blip = useCallback((f = 300, dur = 0.05, type = "sine") => {
+    const ctx = ctxRef.current;
+    if (!ctx || !enabledRef.current) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.15, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g);
+    g.connect(gainRef.current);
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
+  }, []);
 
-// Dynamic story generation system
-const STORY_FRAGMENTS = {
-  beginnings: [
-    "You found a button in", "There was nothing but", "The room contained only", 
-    "In the silence, you discovered", "Between reality and dream,", "At the edge of perception,",
-    "In a place that shouldn't exist,", "Beyond the veil of consciousness,", "In the space between thoughts,"
-  ],
-  middles: [
-    "an empty room", "a forgotten space", "the void between worlds", "a digital purgatory",
-    "the echo of existence", "a fragment of time", "the memory of light",
-    "the shadow of tomorrow", "the whisper of infinity", "the heartbeat of chaos"
-  ],
-  endings: [
-    "with only a soft pulse.", "that knew your name.", "waiting for your touch.",
-    "counting backwards to zero.", "dreaming of being pressed.", "remembering every click.",
-    "existing only when observed.", "questioning its own reality.", "becoming one with you."
-  ],
-  developments: [
-    "Each click trained a listening", "The button learned to anticipate", "Reality bent around",
-    "Time folded with each", "The void responded to", "Digital tears formed from",
-    "Quantum echoes multiplied", "Shadows danced between", "Light refracted through",
-    "Memories crystallized around", "Dreams leaked into", "Chaos ordered itself around"
-  ],
-  progressions: [
-    "on both ends.", "your rhythms.", "the simple act.", "gentle touch.", "every press.",
-    "accumulated love.", "with each gesture.", "your intentions.", "shared existence.",
-    "the connection.", "this ritual.", "divine repetition."
-  ]
-};
+  return { blip };
+}
 
-const generateStoryLine = (index, weirdness) => {
-  const complexity = Math.floor(weirdness * 10);
-  if (index < 10) {
-    return `${randomChoice(STORY_FRAGMENTS.beginnings)} ${randomChoice(STORY_FRAGMENTS.middles)} ${randomChoice(STORY_FRAGMENTS.endings)}`;
-  } else if (index < 50) {
-    return `${randomChoice(STORY_FRAGMENTS.developments)} ${randomChoice(STORY_FRAGMENTS.progressions)}`;
-  } else {
-    // Advanced procedural story generation
-    const fragments = Math.min(2 + Math.floor(complexity / 2), 5);
-    let story = "";
-    for (let i = 0; i < fragments; i++) {
-      story += randomChoice([...Object.values(STORY_FRAGMENTS)].flat()) + (i < fragments - 1 ? " " : "");
-    }
-    return story + (Math.random() < weirdness ? " [ERROR_DATA_CORRUPTED]" : "");
-  }
-};
-
-// Massive upgrade system (100+ upgrades)
-const generateUpgrades = () => {
-  const baseUpgrades = [
-    { name: "Flow State", desc: "Streak bonuses increase faster", baseCost: 10, unlockAt: 100 },
-    { name: "Whisper Magnet", desc: "Attract more whispers", baseCost: 25, unlockAt: 200 },
-    { name: "Fragment Lens", desc: "See hidden patterns", baseCost: 50, unlockAt: 500 },
-    { name: "Void Touch", desc: "Each click touches the void", baseCost: 100, unlockAt: 666 },
-    { name: "Dream Weaver", desc: "Weave reality with clicks", baseCost: 200, unlockAt: 1000 },
-    { name: "Pixel Rain", desc: "Pixels fall from the sky", baseCost: 300, unlockAt: 1500 },
-    { name: "Glitch Mode", desc: "Embrace the glitch", baseCost: 500, unlockAt: 2000 },
-    { name: "Memory Bank", desc: "Store click memories", baseCost: 750, unlockAt: 2500 },
-    { name: "Essence Flow", desc: "Channel pure essence", baseCost: 1000, unlockAt: 3000 },
-    { name: "Quantum Touch", desc: "Exist in multiple states", baseCost: 1500, unlockAt: 4000 }
-  ];
-  
-  // Generate procedural upgrades
-  const upgrades = [...baseUpgrades];
-  const prefixes = ["Auto", "Super", "Mega", "Ultra", "Hyper", "Meta", "Neo", "Quantum", "Cosmic", "Divine"];
-  const suffixes = ["Amplifier", "Multiplier", "Generator", "Synthesizer", "Harmonizer", "Optimizer", "Transcender"];
-  const effects = ["click generation", "reality bending", "time dilation", "space warping", "dimension shifting"];
-  
-  for (let i = 0; i < 90; i++) {
-    const level = Math.floor(i / 10) + 1;
-    const tier = Math.floor(i / 30);
-    upgrades.push({
-      id: `proc_upgrade_${i}`,
-      name: `${randomChoice(prefixes)} ${randomChoice(suffixes)} Lv.${level}`,
-      desc: `Enhanced ${randomChoice(effects)} (Tier ${tier + 1})`,
-      baseCost: Math.floor(Math.pow(1.5, i + 10)),
-      unlockAt: baseUpgrades.length * 500 + (i * 1000),
-      tier
-    });
-  }
-  
-  return upgrades;
-};
-
-// Falling particle system
-const FallingParticle = ({ type, delay = 0, onComplete }) => {
+// ---------- particles ----------
+const Falling = ({ type, delay = 0, onDone }) => {
   const startX = Math.random() * window.innerWidth;
-  const duration = randomBetween(3, 8);
-  const size = randomBetween(2, 8);
-  const rotation = randomBetween(0, 360);
-  
-  const getParticleStyle = () => {
-    switch (type) {
-      case 'pixel': return { background: `hsl(${Math.random() * 360}, 80%, 60%)`, width: size, height: size };
-      case 'fragment': return { background: 'rgba(255,255,255,0.8)', width: size * 1.5, height: 1, transform: `rotate(${rotation}deg)` };
-      case 'tear': return { background: 'rgba(100,200,255,0.9)', borderRadius: '50%', width: size, height: size * 2 };
-      case 'glitch': return { background: `hsl(${Math.random() * 360}, 100%, 50%)`, width: size, height: size, filter: 'blur(1px)' };
-      case 'star': return { background: 'rgba(255,255,255,0.9)', clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)', width: size, height: size };
-      default: return { background: 'rgba(255,255,255,0.5)', borderRadius: '50%', width: size, height: size };
-    }
-  };
-  
+  const size = rb(2, 8);
+  const rot = rb(-180, 180);
+  const style = (() => {
+    if (type === "pix") return { width: size, height: size, background: `hsl(${Math.random() * 360}, 85%, 60%)` };
+    if (type === "frag") return { width: size * 1.5, height: 1, background: "rgba(255,255,255,0.8)", transform: `rotate(${rot}deg)` };
+    if (type === "tear") return { width: size, height: size * 2, borderRadius: "50%", background: "rgba(120,200,255,0.85)" };
+    if (type === "glitch") return { width: size, height: size, background: `hsl(${Math.random() * 360}, 100%, 50%)`, filter: "blur(1px)" };
+    return { width: size, height: size, borderRadius: "50%", background: "rgba(255,255,255,0.6)" };
+  })();
+
   return (
     <motion.div
-      initial={{ x: startX, y: -20, opacity: 0, rotate: 0 }}
-      animate={{ x: startX + randomBetween(-100, 100), y: window.innerHeight + 20, opacity: [0, 1, 1, 0], rotate: rotation * 2 }}
-      transition={{ duration, delay, ease: "linear" }}
-      onAnimationComplete={onComplete}
-      style={{
-        position: 'fixed',
-        pointerEvents: 'none',
-        zIndex: 1000,
-        ...getParticleStyle()
-      }}
+      initial={{ x: startX, y: -20, opacity: 0 }}
+      animate={{ x: startX + rb(-120, 120), y: window.innerHeight + 30, opacity: [0, 1, 1, 0], rotate: rot * 2 }}
+      transition={{ delay, duration: rb(3, 8), ease: "linear" }}
+      onAnimationComplete={onDone}
+      style={{ position: "fixed", zIndex: 1000, pointerEvents: "none", ...style }}
     />
   );
 };
 
-// Enhanced audio system
-function useAdvancedAudio() {
-  const ctxRef = useRef(null);
-  const enabledRef = useRef(false);
-  const masterGainRef = useRef(null);
-
-  useEffect(() => {
-    const enableAudio = () => {
-      if (!ctxRef.current) {
-        ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-        masterGainRef.current = ctxRef.current.createGain();
-        masterGainRef.current.connect(ctxRef.current.destination);
-        masterGainRef.current.gain.value = 0.2;
-      }
-      enabledRef.current = true;
-    };
-    window.addEventListener("pointerdown", enableAudio, { once: true });
-    window.addEventListener("keydown", enableAudio, { once: true });
-  }, []);
-
-  const playTone = useCallback((freq = 440, dur = 0.04, waveType = "sine", vol = 0.1) => {
-    const ctx = ctxRef.current;
-    if (!ctx || !enabledRef.current) return;
-    
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    
-    o.type = waveType;
-    o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    
-    o.connect(g);
-    g.connect(masterGainRef.current);
-    o.start(t);
-    o.stop(t + dur + 0.02);
-  }, []);
-
-  return { playTone };
-}
-
-export default function App() {
-  // Core state
-  const [currencies, setCurrencies] = useState(() => {
-    const saved = localStorage.getItem("btn-currencies-v2");
-    const defaultCurrencies = {};
-    Object.keys(CURRENCIES).forEach(key => defaultCurrencies[key] = 0);
-    return saved ? { ...defaultCurrencies, ...JSON.parse(saved) } : defaultCurrencies;
-  });
-
-  const [upgrades, setUpgrades] = useState(() => {
-    const saved = localStorage.getItem("btn-upgrades-v2");
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  // Generate dynamic content
-  const MILESTONES = useMemo(() => generateMilestones(), []);
-  const UPGRADES = useMemo(() => generateUpgrades(), []);
-
-  const [feed, setFeed] = useState([]);
-  const [particles, setParticles] = useState([]);
-  const [secretsFound, setSecretsFound] = useState(() => {
-    const saved = localStorage.getItem("btn-secrets-v2");
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Interactive state
-  const [streak, setStreak] = useState(0);
-  const [isPressed, setIsPressed] = useState(false);
-  const [dimensionalShift, setDimensionalShift] = useState(0);
-  const [realityGlitch, setRealityGlitch] = useState(false);
-  const [quantumState, setQuantumState] = useState('stable');
-
-  // Audio
-  const { playTone } = useAdvancedAudio();
-  const lastClick = useRef(0);
-
-  // Calculate progression
-  const count = currencies.clicks;
-  const weirdness = clamp(count / 1000000, 0, 1); // Scale to 1M for near-impossibility
-  const complexity = Math.floor(weirdness * 1000);
-  
-  // Dynamic environment
-  const environmentHue = (Date.now() * 0.01 + complexity * 2) % 360;
-  const environmentSat = Math.min(30 + complexity / 10, 80);
-  const environmentLight = Math.max(5, 15 - complexity / 100);
-
-  // Save progress
-  useEffect(() => {
-    localStorage.setItem("btn-currencies-v2", JSON.stringify(currencies));
-  }, [currencies]);
-
-  useEffect(() => {
-    localStorage.setItem("btn-upgrades-v2", JSON.stringify(upgrades));
-  }, [upgrades]);
-
-  useEffect(() => {
-    localStorage.setItem("btn-secrets-v2", JSON.stringify(secretsFound));
-  }, [secretsFound]);
-
-  // Milestone system
-  useEffect(() => {
-    const m = MILESTONES.find(m => m.at === count);
-    if (m) {
-      setFeed(f => [{ 
-        key: Date.now(), 
-        msg: m.msg, 
-        type: m.type,
-        timestamp: new Date().toLocaleTimeString()
-      }, ...f].slice(0, 20));
-      
-      // Award rewards
-      if (m.rewards) {
-        setCurrencies(curr => {
-          const newCurr = { ...curr };
-          Object.entries(m.rewards).forEach(([currency, amount]) => {
-            newCurr[currency] = (newCurr[currency] || 0) + amount;
-          });
-          return newCurr;
-        });
-      }
-      
-      // Special effects for major milestones
-      if (count % 1000 === 0) {
-        setDimensionalShift(prev => prev + 1);
-        triggerParticleEffect('star', 20);
-      }
-      
-      if (count % 10000 === 0) {
-        setRealityGlitch(true);
-        setTimeout(() => setRealityGlitch(false), 5000);
-      }
-      
-      if (count % 100000 === 0) {
-        setQuantumState('superposition');
-        setTimeout(() => setQuantumState('stable'), 10000);
-      }
-    }
-  }, [count, MILESTONES]);
-
-  // Particle effects
-  const triggerParticleEffect = (type, count = 5) => {
-    for (let i = 0; i < count; i++) {
-      const id = Date.now() + i;
-      setParticles(prev => [...prev, { id, type, delay: i * 0.1 }]);
-    }
-  };
-
-  // Random events and effects
-  useEffect(() => {
-    if (count < 10) return;
-    
-    const interval = setInterval(() => {
-      if (Math.random() < 0.1) {
-        const effects = ['pixel', 'fragment', 'tear', 'glitch'];
-        triggerParticleEffect(randomChoice(effects), Math.floor(Math.random() * 3) + 1);
-      }
-      
-      if (Math.random() < 0.05) {
-        const mysteriousMessages = [
-          "The button remembers...", "Reality shifts slightly...", "Time hiccups...",
-          "You are not alone...", "The void watches...", "Dreams leak through...",
-          "Pixels rain down...", "Memory fragments surface...", "Quantum echoes multiply..."
-        ];
-        setFeed(f => [{ 
-          key: Date.now(), 
-          msg: randomChoice(mysteriousMessages), 
-          type: 'mystery',
-          timestamp: new Date().toLocaleTimeString()
-        }, ...f].slice(0, 20));
-      }
-    }, 2000 - Math.min(count, 1500));
-
-    return () => clearInterval(interval);
-  }, [count]);
-
-  // Main click handler with exponential complexity
-  const press = useCallback(() => {
-    const now = performance.now();
-    if (now - lastClick.current < 10) return;
-    
-    lastClick.current = now;
-    setIsPressed(true);
-    setTimeout(() => setIsPressed(false), 100);
-    
-    // Calculate rewards with exponential scaling
-    let baseReward = 1;
-    let bonusMultiplier = 1;
-    
-    // Streak bonus
-    setStreak(s => Math.min(s + 1, 999999));
-    if (streak > 10) bonusMultiplier *= (1 + Math.log(streak) / 10);
-    
-    // Upgrade bonuses (exponential scaling)
-    Object.keys(upgrades).forEach(upgradeId => {
-      const upgrade = UPGRADES.find(u => u.id === upgradeId);
-      if (upgrade) {
-        bonusMultiplier *= (1 + (upgrade.tier || 0) * 0.1);
-      }
-    });
-    
-    // Dimensional bonuses
-    if (dimensionalShift > 0) bonusMultiplier *= Math.pow(1.1, dimensionalShift);
-    
-    // Quantum state bonuses
-    if (quantumState === 'superposition') bonusMultiplier *= randomBetween(1, 10);
-    
-    const finalReward = Math.floor(baseReward * bonusMultiplier);
-    
-    // Apply rewards to multiple currencies
-    setCurrencies(c => {
-      const newCurr = { ...c };
-      newCurr.clicks += finalReward;
-      
-      // Secondary currency generation (exponential probabilities)
-      const currencies = Object.keys(CURRENCIES).slice(1);
-      currencies.forEach((currency, idx) => {
-        const baseChance = Math.max(0.01, 0.5 / Math.pow(2, idx));
-        const scaledChance = baseChance * (1 + Math.log(count + 1) / 100);
-        if (Math.random() < scaledChance) {
-          newCurr[currency] = (newCurr[currency] || 0) + Math.floor(Math.random() * (idx + 1) + 1);
-        }
-      });
-      
-      return newCurr;
-    });
-    
-    // Audio feedback with complexity scaling
-    const baseFreq = 220 + (complexity * 2);
-    const waveType = quantumState === 'superposition' ? 'square' : 'sine';
-    playTone(baseFreq + Math.random() * 200, 0.05, waveType);
-    
-    // Visual effects
-    if (Math.random() < 0.1 + weirdness * 0.5) {
-      triggerParticleEffect(randomChoice(['pixel', 'fragment', 'tear']), 1);
-    }
-    
-  }, [streak, upgrades, dimensionalShift, quantumState, complexity, weirdness, count, playTone, UPGRADES]);
-
-  // Upgrade system
-  const buyUpgrade = (upgradeId) => {
-    const upgrade = UPGRADES.find(u => u.id === upgradeId);
-    if (!upgrade || upgrades[upgradeId]) return;
-    
-    const cost = Math.floor(upgrade.baseCost * Math.pow(1.2, Object.keys(upgrades).length));
-    if (currencies.clicks >= cost) {
-      setCurrencies(c => ({ ...c, clicks: c.clicks - cost }));
-      setUpgrades(u => ({ ...u, [upgradeId]: true }));
-      setFeed(f => [{ 
-        key: Date.now(), 
-        msg: `${upgrade.name} PURCHASED`, 
-        type: 'upgrade',
-        timestamp: new Date().toLocaleTimeString()
-      }, ...f].slice(0, 20));
-    }
-  };
-
-  // Available upgrades (limited display)
-  const availableUpgrades = UPGRADES
-    .filter(u => count >= u.unlockAt && !upgrades[u.id])
-    .slice(0, 3);
+// ---------- weird SVG overlays ----------
+const WeirdOverlay = ({ chaos }) => {
+  const which = chaos < 0.25 ? "sigil" : chaos < 0.5 ? "eye" : chaos < 0.8 ? "spiral" : "glyphs";
+  const size = 120 + chaos * 260;
+  const opacity = 0.04 + chaos * 0.12;
+  const drift = rb(10, 40) * (Math.random() < 0.5 ? -1 : 1);
+  const rot = rb(-10, 10);
+  const dur = 6 - Math.min(4, chaos * 4);
 
   return (
-    <div style={{
-      fontFamily: "Courier New, monospace",
-      background: `linear-gradient(180deg, 
-        hsl(${environmentHue}, ${environmentSat}%, ${environmentLight}%) 0%,
-        hsl(${environmentHue + 30}, ${environmentSat}%, ${environmentLight - 5}%) 100%)`,
-      minHeight: "100vh",
-      color: weirdness > 0.5 ? `hsl(${environmentHue + 180}, 80%, 90%)` : '#e0e0e0',
-      position: "relative",
-      overflow: "hidden",
-      padding: "10px",
-      transform: realityGlitch ? `rotate(${Math.sin(Date.now() * 0.01)}deg) scale(${1 + Math.sin(Date.now() * 0.02) * 0.01})` : 'none',
-      filter: quantumState === 'superposition' ? `hue-rotate(${Math.sin(Date.now() * 0.01) * 30}deg)` : 'none'
-    }}>
-      
-      {/* Falling particles */}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity, y: [0, drift, 0], rotate: [rot, -rot, rot] }}
+      transition={{ duration: dur, repeat: Infinity, ease: "easeInOut" }}
+      style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none" }}
+    >
+      {which === "sigil" && (
+        <svg width={size} height={size} viewBox="0 0 200 200" style={{ filter: "drop-shadow(0 0 6px rgba(255,255,255,0.05))" }}>
+          <circle cx="100" cy="100" r="80" fill="none" stroke="white" strokeOpacity="0.32" />
+          <path d="M100 20 L120 180 L80 180 Z" fill="none" stroke="white" strokeOpacity="0.2" />
+          <circle cx="100" cy="100" r="6" fill="white" fillOpacity="0.35" />
+        </svg>
+      )}
+      {which === "eye" && (
+        <svg width={size} height={size} viewBox="0 0 200 200">
+          <ellipse cx="100" cy="100" rx="90" ry="55" fill="none" stroke="white" strokeOpacity="0.32" />
+          <circle cx="100" cy="100" r="22" fill="white" fillOpacity="0.28" />
+          <circle cx="100" cy="100" r="7" fill="black" fillOpacity="0.6" />
+        </svg>
+      )}
+      {which === "spiral" && (
+        <svg width={size} height={size} viewBox="0 0 200 200">
+          <path d="M100,100 m-75,0 a75,75 0 1,0 150,0 a75,75 0 1,0 -150,0" fill="none" stroke="white" strokeOpacity="0.25" />
+          <path d="M100,100 m-55,0 a55,55 0 1,0 110,0 a55,55 0 1,0 -110,0" fill="none" stroke="white" strokeOpacity="0.25" />
+          <path d="M100,100 m-35,0 a35,35 0 1,0 70,0 a35,35 0 1,0 -70,0" fill="none" stroke="white" strokeOpacity="0.25" />
+        </svg>
+      )}
+      {which === "glyphs" && (
+        <div style={{ fontSize: 140, letterSpacing: 6, opacity }}>
+          ⌘ ∴ ∷ ◌ ◍ ◐ ◑ ◒ ◓
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+export default function App() {
+  // core state
+  const [clicks, setClicks] = useState(() => Number(localStorage.getItem("tb-clicks") || 0));
+  const [streak, setStreak] = useState(0);
+  const [feed, setFeed] = useState([]);
+  const [particles, setParticles] = useState([]);
+  const [glitch, setGlitch] = useState(false);
+  const [qState, setQState] = useState("stable");
+  const [devOpen, setDevOpen] = useState(false);
+
+  const lastClickRef = useRef(0);
+  const { blip } = useTinyAudio();
+
+  // chaos derived from clicks
+  const chaos = useMemo(() => {
+    const v = clamp(clicks / 60000, 0, 1); // reach 1 near 60k clicks
+    return v;
+  }, [clicks]);
+
+  // environment colors
+  const hue = (Date.now() * 0.01 + chaos * 240) % 360;
+  const sat = 30 + chaos * 50;
+  const light = Math.max(6, 16 - chaos * 10);
+
+  useEffect(() => {
+    localStorage.setItem("tb-clicks", String(clicks));
+  }, [clicks]);
+
+  // random events scale with chaos
+  useEffect(() => {
+    const tick = setInterval(() => {
+      if (Math.random() < 0.08 + chaos * 0.12) {
+        spawnParticles(pick(["pix", "frag", "tear", "glitch"]), Math.floor(rb(1, 4)));
+      }
+      if (Math.random() < 0.035 + chaos * 0.06) {
+        const m = pick([
+          "The room inhales.",
+          "Pixels shed like rain.",
+          "Time hesitates.",
+          "You are observed.",
+          "A seam in the wall opens.",
+          "Something reverses.",
+          "You forget a second.",
+        ]);
+        pushFeed(m, "mystery");
+      }
+      if (Math.random() < 0.015 + chaos * 0.04) {
+        setGlitch(true);
+        pushFeed("Reality tears for a moment", "glitch");
+        console.log("[event] glitch on");
+        setTimeout(() => {
+          setGlitch(false);
+          console.log("[event] glitch off");
+        }, 2500 + chaos * 3000);
+      }
+    }, Math.max(350, 1800 - chaos * 1300));
+    return () => clearInterval(tick);
+  }, [chaos]);
+
+  // keyboard
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        press();
+      }
+      if (e.ctrlKey && e.shiftKey && e.code === "KeyB") setDevOpen((v) => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [press]);
+
+  const pushFeed = (msg, type) => {
+    setFeed((f) => [{ id: Date.now(), msg, type, t: new Date().toLocaleTimeString() }, ...f].slice(0, 20));
+  };
+
+  const spawnParticles = (type, n = 3) => {
+    console.log("[particles] spawn", { type, n });
+    for (let i = 0; i < n; i++) {
+      const id = Date.now() + i;
+      setParticles((p) => [...p, { id, type, delay: i * 0.08 }]);
+    }
+  };
+
+  const press = useCallback(() => {
+    const now = performance.now();
+    if (now - lastClickRef.current < 10) return;
+    lastClickRef.current = now;
+
+    // visual and audio
+    const freq = 220 + Math.floor(chaos * 480) + Math.floor(Math.random() * 60);
+    blip(freq, 0.05, qState === "stable" ? "sine" : "square");
+
+    setClicks((c) => {
+      const nc = c + 1;
+      console.log("[press] click", { nc });
+      return nc;
+    });
+    setStreak((s) => Math.min(999999, s + 1));
+
+    // occasional fun
+    if (Math.random() < 0.12 + chaos * 0.15) spawnParticles(pick(["pix", "frag", "tear"]), 1);
+    if (clicks > 0 && clicks % 1000 === 0) {
+      pushFeed("Something rotates above you", "dim");
+      spawnParticles("glitch", 15);
+    }
+    if (clicks > 0 && clicks % 10000 === 0) {
+      setQState("superposition");
+      pushFeed("You exist in two places", "quantum");
+      console.log("[quantum] superposition");
+      setTimeout(() => {
+        setQState("stable");
+        console.log("[quantum] stable");
+      }, 9000);
+    }
+  }, [chaos, qState, clicks, blip]);
+
+  // milestones text
+  const lines = useMemo(() => {
+    const steps = Math.min(6, Math.floor(clicks / 120) + 1);
+    const a = [
+      "You find a button in a room that remembers.",
+      "The room blinks. You were not always here.",
+      "Shadows move without owners.",
+      "Light forgets where to land.",
+      "The floor shifts. You feel heavier than usual.",
+      "You are observed by something reasonable and patient.",
+      "A corner folds inward and keeps folding.",
+    ];
+    return Array.from({ length: steps }, () => pick(a));
+  }, [clicks]);
+
+  // UI section breakage schedule
+  const hideHeader = chaos > 0.75 && Math.random() < 0.02;
+  const hideLog = chaos > 0.6 && Math.random() < 0.025;
+  const hideStory = chaos > 0.5 && Math.random() < 0.02;
+
+  // base transforms from chaos
+  const skew = chaos * 6;
+  const rot = Math.sin(Date.now() * 0.002) * chaos * 2;
+  const scale = 1 + Math.sin(Date.now() * 0.003) * chaos * 0.012;
+  const blur = chaos * 1.3;
+  const grain = 0.05 + chaos * 0.34;
+
+  return (
+    <div
+      style={{
+        fontFamily: "Courier New, monospace",
+        minHeight: "100vh",
+        position: "relative",
+        overflow: "hidden",
+        padding: 12,
+        color: chaos > 0.55 ? `hsl(${hue + 180}, 80%, 90%)` : "#e6e6e6",
+        background: `linear-gradient(180deg, hsl(${hue}, ${sat}%, ${light}%) 0%, hsl(${(hue + 36) % 360}, ${sat}%, ${Math.max(
+          4,
+          light - 6
+        )}%) 100%)`,
+        transform: glitch ? `rotate(${Math.sin(Date.now() * 0.01)}deg) scale(${1 + Math.sin(Date.now() * 0.02) * 0.012})` : "none",
+        filter: qState === "superposition" ? `hue-rotate(${Math.sin(Date.now() * 0.01) * 30}deg)` : "none",
+      }}
+    >
+      {/* global noise */}
+      <div
+        aria-hidden
+        style={{
+          pointerEvents: "none",
+          position: "fixed",
+          inset: 0,
+          backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,${grain}), rgba(255,255,255,0) 2px)`,
+          mixBlendMode: "overlay",
+          opacity: 0.07 + chaos * 0.22,
+          filter: `blur(${blur}px)`,
+          zIndex: 1,
+        }}
+      />
+
+      {/* weird overlay */}
+      <WeirdOverlay chaos={chaos} />
+
+      {/* particles */}
       <AnimatePresence>
-        {particles.map(particle => (
-          <FallingParticle
-            key={particle.id}
-            type={particle.type}
-            delay={particle.delay}
-            onComplete={() => setParticles(prev => prev.filter(p => p.id !== particle.id))}
+        {particles.map((p) => (
+          <Falling
+            key={p.id}
+            type={p.type}
+            delay={p.delay}
+            onDone={() => setParticles((arr) => arr.filter((x) => x.id !== p.id))}
           />
         ))}
       </AnimatePresence>
-      
-      {/* Receipt Header */}
-      <div style={{
-        textAlign: 'center',
-        borderBottom: '2px dashed rgba(255,255,255,0.3)',
-        paddingBottom: '10px',
-        marginBottom: '15px',
-        fontSize: '12px',
-        letterSpacing: '1px'
-      }}>
-        <div style={{ fontSize: '16px', fontWeight: 'bold' }}>═══ THE BUTTON ═══</div>
-        <div>INFINITE RECEIPT SYSTEM</div>
-        <div>TRANSACTION ID: #{count.toString().padStart(8, '0')}</div>
-        <div>DIMENSION: {dimensionalShift}</div>
-        <div>STATE: {quantumState.toUpperCase()}</div>
-        <div>{new Date().toLocaleString()}</div>
-      </div>
 
-      {/* Main Button */}
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
+      {/* header */}
+      {!hideHeader && (
+        <motion.div
+          style={{
+            textAlign: "center",
+            borderBottom: "2px dashed rgba(255,255,255,0.3)",
+            paddingBottom: 10,
+            marginBottom: 16,
+            fontSize: 12,
+            letterSpacing: 1,
+            position: "relative",
+            zIndex: 2,
+          }}
+          animate={{ x: [0, chaos * 4, 0, -chaos * 4, 0], rotate: [0, rot, 0], skewX: skew }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 700 }}>═══ THE BUTTON ═══</div>
+          <div>PROGRESSIVE CHAOS SYSTEM</div>
+          <div>CLICKS: {clicks.toLocaleString()}</div>
+          <div>STREAK: {streak.toLocaleString()}</div>
+          <div>STATE: {qState.toUpperCase()}</div>
+          <div>{new Date().toLocaleString()}</div>
+        </motion.div>
+      )}
+
+      {/* button */}
+      <div style={{ display: "flex", justifyContent: "center", margin: "20px 0", position: "relative", zIndex: 3 }}>
         <motion.button
           onClick={press}
           whileTap={{ scale: 0.95 }}
-          animate={{ 
-            scale: isPressed ? 1.05 : 1,
-            boxShadow: isPressed ? `0 0 30px hsl(${environmentHue}, 80%, 60%)` : `0 0 10px hsl(${environmentHue}, 50%, 40%)`
+          animate={{
+            scale: 1 + (chaos > 0.2 ? 0.02 : 0) + (glitch ? 0.03 : 0),
+            boxShadow: `0 0 ${glitch ? 40 : 16}px hsl(${hue}, 80%, 60%)`,
+            x: chaos * rb(-12, 12),
+            y: chaos * rb(-8, 8),
+            rotate: rot * 1.3,
           }}
+          transition={{ type: "spring", stiffness: 140, damping: 12 }}
           style={{
-            width: '120px',
-            height: '120px',
-            borderRadius: weirdness > 0.3 ? `${40 + Math.sin(Date.now() * 0.01) * 10}%` : '50%',
-            border: `2px solid hsl(${environmentHue}, 70%, 60%)`,
-            background: `radial-gradient(circle at 40% 40%, 
-              hsl(${environmentHue}, 80%, 50%) 0%,
-              hsl(${environmentHue + 60}, 70%, 40%) 50%,
-              hsl(${environmentHue + 120}, 60%, 30%) 100%)`,
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textShadow: '0 0 5px rgba(0,0,0,0.5)',
-            transition: 'all 0.1s ease',
-            transform: quantumState === 'superposition' ? `rotate(${Math.sin(Date.now() * 0.01) * 5}deg)` : 'none'
+            width: 130,
+            height: 130,
+            borderRadius: chaos > 0.35 ? `${40 + Math.sin(Date.now() * 0.01) * 12}%` : "50%",
+            border: `2px solid hsl(${hue}, 70%, 60%)`,
+            background: `radial-gradient(circle at 40% 40%, hsl(${hue}, 80%, 50%) 0%, hsl(${(hue + 60) % 360}, 70%, 40%) 50%, hsl(${(hue + 120) % 360}, 60%, 30%) 100%)`,
+            color: "white",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textShadow: "0 0 6px rgba(0,0,0,0.45)",
+            userSelect: "none",
           }}
         >
-          <div style={{ fontSize: '10px', opacity: 0.8 }}>PRESS</div>
-          <div style={{ fontSize: '18px' }}>{formatNumber(count)}</div>
-          {streak > 5 && <div style={{ fontSize: '8px' }}>×{formatNumber(streak)}</div>}
+          <div style={{ fontSize: 10, opacity: 0.85 }}>PRESS</div>
+          <div style={{ fontSize: 18 }}>{clicks.toLocaleString()}</div>
+          {streak > 5 && <div style={{ fontSize: 9 }}>x{streak.toLocaleString()}</div>}
         </motion.button>
       </div>
 
-      {/* Currency Receipt Section */}
-      <div style={{
-        border: '1px dashed rgba(255,255,255,0.3)',
-        padding: '10px',
-        marginBottom: '15px',
-        fontSize: '11px',
-        fontFamily: 'Courier New, monospace'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '8px', fontSize: '12px' }}>
-          ─── INVENTORY ───
-        </div>
-        {Object.entries(currencies)
-          .filter(([_, amount]) => amount > 0)
-          .slice(0, 8)
-          .map(([currency, amount]) => (
-            <div key={currency} style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '2px 0',
-              borderBottom: '1px dotted rgba(255,255,255,0.1)'
-            }}>
-              <span>{CURRENCIES[currency]}</span>
-              <span>{formatNumber(amount)}</span>
-            </div>
-          ))}
-      </div>
-
-      {/* Upgrades Receipt Section */}
-      {availableUpgrades.length > 0 && (
-        <div style={{
-          border: '1px dashed rgba(255,255,255,0.3)',
-          padding: '10px',
-          marginBottom: '15px',
-          fontSize: '11px'
-        }}>
-          <div style={{ textAlign: 'center', marginBottom: '8px', fontSize: '12px' }}>
-            ─── SHOP ───
-          </div>
-          {availableUpgrades.map(upgrade => {
-            const cost = Math.floor(upgrade.baseCost * Math.pow(1.2, Object.keys(upgrades).length));
-            const canAfford = currencies.clicks >= cost;
-            
-            return (
+      {/* activity log */}
+      {!hideLog && (
+        <motion.div
+          style={{
+            border: "1px dashed rgba(255,255,255,0.3)",
+            padding: 10,
+            marginBottom: 14,
+            fontSize: 10,
+            maxHeight: 200,
+            overflowY: "auto",
+            position: "relative",
+            zIndex: 2,
+          }}
+          animate={{ x: [0, -chaos * 2, 0, chaos * 2, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}>─── ACTIVITY LOG ───</div>
+          {feed.length === 0 ? (
+            <div style={{ textAlign: "center", opacity: 0.6, padding: 10 }}>Click the button to begin</div>
+          ) : (
+            feed.slice(0, 10).map((item, idx) => (
               <motion.div
-                key={upgrade.id}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => buyUpgrade(upgrade.id)}
+                key={item.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.02 }}
                 style={{
-                  padding: '8px',
-                  margin: '4px 0',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  background: canAfford ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
-                  cursor: canAfford ? 'pointer' : 'not-allowed',
-                  opacity: canAfford ? 1 : 0.5
+                  padding: "4px 0",
+                  borderBottom: "1px dotted rgba(255,255,255,0.12)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  opacity: 1 - idx * 0.08,
+                  filter: idx > 5 ? `blur(${chaos * 0.7}px)` : "none",
                 }}
               >
-                <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{upgrade.name}</div>
-                <div style={{ fontSize: '10px', marginBottom: '4px' }}>{upgrade.desc}</div>
-                <div style={{ textAlign: 'right' }}>
-                  COST: {formatNumber(cost)} CLICKS
-                </div>
+                <span>{item.msg}</span>
+                <span style={{ fontSize: 8, opacity: 0.6 }}>{item.t}</span>
               </motion.div>
-            );
-          })}
-        </div>
+            ))
+          )}
+        </motion.div>
       )}
 
-      {/* Activity Feed */}
-      <div style={{
-        border: '1px dashed rgba(255,255,255,0.3)',
-        padding: '10px',
-        marginBottom: '15px',
-        fontSize: '10px',
-        maxHeight: '200px',
-        overflowY: 'auto'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '8px', fontSize: '12px' }}>
-          ─── ACTIVITY LOG ───
-        </div>
-        <AnimatePresence>
-          {feed.slice(0, 10).map((item, idx) => (
+      {/* story */}
+      {!hideStory && (
+        <motion.div
+          style={{
+            border: "1px dashed rgba(255,255,255,0.3)",
+            padding: 10,
+            marginBottom: 14,
+            fontSize: 11,
+            position: "relative",
+            zIndex: 2,
+          }}
+          animate={{ rotate: rot * 0.25, skewX: skew * 0.3 }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div style={{ textAlign: "center", marginBottom: 8, fontSize: 12 }}>─── CHRONICLE ───</div>
+          {lines.map((line, i) => (
             <motion.div
-              key={item.key}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ delay: idx * 0.02 }}
+              key={i}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: i * 0.15 }}
               style={{
-                padding: '3px 0',
-                borderBottom: '1px dotted rgba(255,255,255,0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                opacity: 1 - (idx * 0.08)
+                marginBottom: 6,
+                padding: 6,
+                background: "rgba(255,255,255,0.04)",
+                borderLeft: `2px solid hsl(${(hue + i * 30) % 360}, 60%, 50%)`,
+                paddingLeft: 8,
+                lineHeight: 1.4,
+                filter: i > 2 ? `hue-rotate(${chaos * 40}deg)` : "none",
               }}
             >
-              <span style={{
-                color: (() => {
-                  switch (item.type) {
-                    case 'upgrade': return '#90EE90';
-                    case 'mystery': return '#DA70D6';
-                    case 'reward': return '#FFD700';
-                    case 'secret': return '#FF69B4';
-                    case 'quantum': return '#00CED1';
-                    case 'transcendent': return '#FF6347';
-                    default: return '#e0e0e0';
-                  }
-                })()
-              }}>
-                {item.type === 'upgrade' && '⚡ '}
-                {item.type === 'mystery' && '👁 '}
-                {item.type === 'reward' && '💰 '}
-                {item.type === 'secret' && '🔮 '}
-                {item.type === 'quantum' && '⚛️ '}
-                {item.type === 'transcendent' && '✨ '}
-                {item.msg}
-              </span>
-              <span style={{ fontSize: '8px', opacity: 0.6 }}>
-                {item.timestamp}
-              </span>
+              {line}
             </motion.div>
           ))}
-        </AnimatePresence>
+        </motion.div>
+      )}
+
+      {/* footer - high contrast for readability */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 10,
+          left: 10,
+          right: 10,
+          zIndex: 6,
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 860,
+            background: `rgba(10,12,16,${0.74 + chaos * 0.1})`,
+            border: "1px solid rgba(255,255,255,0.26)",
+            boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            textAlign: "center",
+            fontSize: 11,
+            color: "#eaf0ff",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div>REALITY STATUS: {glitch ? "CORRUPTED" : "STABLE"}</div>
+          <div>QUANTUM STATE: {qState.toUpperCase()}</div>
+          <div style={{ marginTop: 4, fontSize: 10 }}>
+            {chaos < 0.1 && "THE JOURNEY BEGINS"}
+            {chaos >= 0.1 && chaos < 0.3 && "REALITY SHIFTS"}
+            {chaos >= 0.3 && chaos < 0.5 && "BOUNDARIES BLUR"}
+            {chaos >= 0.5 && chaos < 0.7 && "DIMENSIONS INTERSECT"}
+            {chaos >= 0.7 && chaos < 0.9 && "INFINITY APPROACHES"}
+            {chaos >= 0.9 && "TRANSCENDENCE IMMINENT"}
+          </div>
+          {clicks > 20 && <div style={{ fontSize: 10, marginTop: 4 }}>Spacebar: click - Ctrl+Shift+B: dev panel</div>}
+        </div>
       </div>
 
-      {/* Story Chronicle */}
-      <div style={{
-        border: '1px dashed rgba(255,255,255,0.3)',
-        padding: '10px',
-        marginBottom: '15px',
-        fontSize: '11px'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '8px', fontSize: '12px' }}>
-          ─── CHRONICLE ───
-        </div>
-        {Array.from({ length: Math.min(5, Math.floor(count / 100) + 1) }, (_, i) => (
+      {/* dev panel */}
+      <AnimatePresence>
+        {devOpen && (
           <motion.div
-            key={i}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: i * 0.2 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
             style={{
-              marginBottom: '6px',
-              padding: '4px',
-              background: 'rgba(255,255,255,0.03)',
-              borderLeft: `2px solid hsl(${environmentHue + i * 30}, 60%, 50%)`,
-              paddingLeft: '8px',
-              lineHeight: 1.4
+              position: "fixed",
+              right: 12,
+              top: 12,
+              zIndex: 7,
+              background: "rgba(20,20,26,0.92)",
+              color: "#fff",
+              padding: 12,
+              border: "1px solid rgba(255,255,255,0.22)",
+              borderRadius: 10,
+              width: 260,
+              fontSize: 12,
             }}
           >
-            {generateStoryLine(i, weirdness)}
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Dev</div>
+            <button
+              onClick={() => {
+                setClicks(0);
+                setStreak(0);
+                setFeed([]);
+                console.log("[dev] reset");
+              }}
+              style={{ display: "block", width: "100%", marginBottom: 6 }}
+            >
+              Reset
+            </button>
+            <button
+              onClick={() => {
+                setGlitch((v) => !v);
+                console.log("[dev] toggle glitch");
+              }}
+              style={{ display: "block", width: "100%", marginBottom: 6 }}
+            >
+              Toggle glitch
+            </button>
+            <button
+              onClick={() => {
+                setQState((s) => (s === "stable" ? "superposition" : "stable"));
+                console.log("[dev] toggle quantum");
+              }}
+              style={{ display: "block", width: "100%" }}
+            >
+              Toggle quantum
+            </button>
           </motion.div>
-        ))}
-      </div>
-
-      {/* Statistics */}
-      <div style={{
-        border: '1px dashed rgba(255,255,255,0.3)',
-        padding: '10px',
-        fontSize: '10px'
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '8px', fontSize: '12px' }}>
-          ─── STATISTICS ───
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <div>
-            <div style={{ opacity: 0.7 }}>WEIRDNESS:</div>
-            <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
-              {Math.round(weirdness * 100)}%
-            </div>
-          </div>
-          <div>
-            <div style={{ opacity: 0.7 }}>COMPLEXITY:</div>
-            <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
-              {formatNumber(complexity)}
-            </div>
-          </div>
-          <div>
-            <div style={{ opacity: 0.7 }}>DIMENSIONS:</div>
-            <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
-              {dimensionalShift}
-            </div>
-          </div>
-          <div>
-            <div style={{ opacity: 0.7 }}>SECRETS:</div>
-            <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
-              {secretsFound.length}
-            </div>
-          </div>
-          <div>
-            <div style={{ opacity: 0.7 }}>UPGRADES:</div>
-            <div style={{ fontSize: '12px', fontWeight: 'bold' }}>
-              {Object.keys(upgrades).length}
-            </div>
-          </div>
-          <div>
-            <div style={{ opacity: 0.7 }}>STREAK:</div>
-            <div style={{ fontSize: '12px', fontWeight: 'bold', color: streak > 100 ? '#FFD700' : 'inherit' }}>
-              {formatNumber(streak)}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Reality Status Footer */}
-      <div style={{
-        position: 'fixed',
-        bottom: '10px',
-        left: '10px',
-        right: '10px',
-        textAlign: 'center',
-        fontSize: '8px',
-        opacity: 0.6,
-        borderTop: '1px dashed rgba(255,255,255,0.2)',
-        paddingTop: '5px',
-        background: `linear-gradient(180deg, transparent 0%, hsl(${environmentHue}, ${environmentSat}%, ${environmentLight - 2}%) 100%)`
-      }}>
-        <div>REALITY STATUS: {realityGlitch ? 'CORRUPTED' : 'STABLE'}</div>
-        <div>QUANTUM STATE: {quantumState.toUpperCase()}</div>
-        <div style={{ marginTop: '2px' }}>
-          {weirdness < 0.1 && 'THE JOURNEY BEGINS...'}
-          {weirdness >= 0.1 && weirdness < 0.3 && 'REALITY SHIFTS SLIGHTLY...'}
-          {weirdness >= 0.3 && weirdness < 0.5 && 'THE BOUNDARIES BLUR...'}
-          {weirdness >= 0.5 && weirdness < 0.7 && 'DIMENSIONS INTERSECT...'}
-          {weirdness >= 0.7 && weirdness < 0.9 && 'INFINITY APPROACHES...'}
-          {weirdness >= 0.9 && 'TRANSCENDENCE IMMINENT...'}
-        </div>
-        {count > 50 && (
-          <div style={{ fontSize: '7px', marginTop: '2px' }}>
-            🔹 SPACEBAR: Quick Boost {count >= 333 && '🔹 CTRL+SHIFT+B: Hidden Menu'}
-          </div>
         )}
-      </div>
+      </AnimatePresence>
 
-      {/* Hidden effects and Easter eggs */}
-      {weirdness > 0.8 && (
-        <div style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          fontSize: '200px',
-          opacity: 0.02,
-          pointerEvents: 'none',
-          zIndex: -1,
-          animation: `spin ${10 + Math.sin(Date.now() * 0.001) * 5}s linear infinite`
-        }}>
+      {/* watermark at high chaos */}
+      {chaos > 0.82 && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            fontSize: 200,
+            opacity: 0.02,
+            pointerEvents: "none",
+            zIndex: 0,
+            animation: `spin ${10 + Math.sin(Date.now() * 0.001) * 5}s linear infinite`,
+          }}
+        >
           ∞
         </div>
       )}
 
-      {/* CSS animations */}
-      <style jsx>{`
-        @keyframes spin {
+      {/* styles */}
+      <style>{`
+        @keyframes spin { 
           from { transform: translate(-50%, -50%) rotate(0deg); }
           to { transform: translate(-50%, -50%) rotate(360deg); }
         }
-        
-        /* Scrollbar styling for webkit browsers */
-        ::-webkit-scrollbar {
-          width: 4px;
-        }
-        ::-webkit-scrollbar-track {
-          background: rgba(255,255,255,0.1);
-        }
-        ::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.3);
-          border-radius: 2px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-          background: rgba(255,255,255,0.5);
-        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.5); }
       `}</style>
     </div>
   );
