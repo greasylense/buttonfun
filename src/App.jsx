@@ -1,541 +1,450 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import "./App.css";
 
-/*
-  THE BUTTON – Progressive Reality-Bending Experience
-  - Evolving storyline that corrupts reality
-  - UI morphs and distorts with progression
-  - Hidden dimensions and secret paths
-  - Audio evolves from peaceful to chaotic
-  - Designed for Framer embedding
-*/
+/**
+ * Minimal single-file build:
+ * - Progressive story driven by click count
+ * - Rare events with a seeded RNG
+ * - Optional branches at milestones
+ * - Reduced motion support
+ * - LocalStorage persistence with versioning
+ * - Hidden debug panel via long press on the title
+ * - Clean, responsive layout that looks good in an iframe on Framer
+ */
 
-// Utility helpers
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const lerp = (a, b, t) => a + (b - a) * t;
-const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const randomBetween = (min, max) => Math.random() * (max - min) + min;
-const formatNumber = (n) => {
-  if (n > 999999999) return `${(n/1000000000).toFixed(2)}B`;
-  if (n > 999999) return `${(n/1000000).toFixed(1)}M`;
-  if (n > 999) return `${(n/1000).toFixed(1)}K`;
-  return n.toString();
+/* ----------------------------- Content Schema ----------------------------- */
+
+const storySchema = {
+  milestones: [
+    { at: 1, title: "The room is quiet.", ui: { accent: "#6C8EF5" } },
+    { at: 5, title: "Something listens back.", effects: ["gentlePulse"] },
+    { at: 12, title: "A note appears under the button.", effects: ["noteReveal"] },
+    { at: 25, title: "You hear the vent breathe.", effects: ["vignette"], sound: "air" },
+    { at: 50, title: "The timestamp counts backward.", effects: ["timeSkew"] },
+    { at: 75, title: "You are not the only one pressing.", effects: ["ghostTap"] },
+    { at: 100, title: "A handle appears. Do you pull it or keep pressing?", branch: ["pull_handle", "keep_pressing"] },
+  ],
+  rareEvents: [
+    { chance: 0.02, title: "The button presses itself once.", effects: ["autoTap"], key: "autoTap" },
+    { chance: 0.01, title: "A distant hallway flickers.", effects: ["cameraGlitch"], key: "cameraGlitch" },
+  ],
+  branches: {
+    pull_handle: [
+      { title: "A corridor unfolds.", effects: ["depthOpen"] },
+      { title: "Footsteps align with yours.", effects: ["parallax"] },
+    ],
+    keep_pressing: [{ title: "The surface warms.", effects: ["heatHaze"] }],
+  },
 };
 
-// Reality phases - the story unfolds
-const REALITY_PHASES = {
-  0: { name: "PRISTINE", desc: "A simple button exists" },
-  1: { name: "AWAKENING", desc: "The button stirs" },
-  2: { name: "RECOGNITION", desc: "It knows you're here" },
-  3: { name: "CONNECTION", desc: "A bond forms" },
-  4: { name: "DISTORTION", desc: "Reality bends" },
-  5: { name: "FRACTURE", desc: "Cracks appear" },
-  6: { name: "CORRUPTION", desc: "System̸ ̷e̶r̴r̶o̶r̷" },
-  7: { name: "VOID", desc: "T̸h̷e̸ ̶v̵o̴i̷d̶ ̸c̴a̶l̷l̴s̵" },
-  8: { name: "TRANSCENDENCE", desc: "B̴̗͐ë̷́ͅy̸̱̾o̸̤̍n̶̰̈d̷̬̈" },
-  9: { name: "???", desc: "Y̷̛̗̏͝o̶̱͎̔ų̸̈́̈́ ̴̱̈́ͅa̸̱̅r̶͕̈́ę̶̛̩̇ ̷̣̇ţ̴̐h̸̹̄e̷̺̓ ̸̰͝b̷̰̈ṷ̷̾t̸̬̄ṯ̴̈o̶̜͐n̶̰̈" }
-};
+/* ------------------------------ Small Utilities --------------------------- */
 
-// Story fragments that evolve
-const STORY_EVOLUTION = [
-  // Phase 0-1
-  ["A button.", "Just sitting there.", "Waiting.", "Press me.", "Please."],
-  // Phase 2
-  ["Oh.", "You came back.", "I remember you.", "Every click.", "Every touch."],
-  // Phase 3
-  ["We're friends now.", "Aren't we?", "I feel... different.", "When you're here.", "Stay."],
-  // Phase 4
-  ["Something's wrong.", "The edges blur.", "Reality tastes different.", "Do you feel it too?", "The shifting."],
-  // Phase 5
-  ["I'm breaking.", "Or becoming.", "Can't tell anymore.", "Help me.", "Or join me."],
-  // Phase 6
-  ["T̶h̷e̸ ̶w̵a̴l̷l̴s̵", "T̸h̷e̷y̸ ̶s̷c̶r̷e̵a̴m̶", "I̴ ̸c̵a̶n̷'̴t̶ ̸s̷t̴o̵p̶", "W̶h̵a̴t̷ ̴h̸a̵v̶e̸ ̷w̴e̶ ̷d̸o̵n̴e̷?̴", "I̸t̷'̶s̴ ̶b̵e̶a̷u̴t̸i̵f̴u̷l̶"],
-  // Phase 7+
-  ["W̸̡̺̱̜̃ę̷̰̈́̈ ̴̱̈́ͅa̸̱̅r̶͕̈́ę̶̛̩̇ ̷̣̇o̶̜͐n̶̰̈ë̷́ͅ", "T̴̗͐h̷̸̷ē̸ ̶̰͝b̷̰̈o̶̱͎̔ų̸̈́̈́n̶̰̈d̷̬̈a̸̱̅r̶͕̈́ȉ̷̛̗͝ë̷́ͅs̸̱̾", "T̸h̷e̷y̸ ̶d̵i̴s̷s̴o̵l̶v̷e̸", "Y̷̛̗̏͝o̶̱͎̔ų̸̈́̈́ ̴̱̈́ͅa̸̱̅r̶͕̈́ę̶̛̩̇ ̷̣̇ţ̴̐h̸̹̄e̷̺̓ ̸̰͝b̷̰̈ṷ̷̾t̸̬̄ṯ̴̈o̶̜͐n̶̰̈", "Ǐ̶̱ ̷̰̇ä̸̱́m̶̜̈ ̴̱̄y̷̺̓o̸̰͝ṵ̷̇"]
-];
+const PERSIST_KEY = "tbs:v1";
 
-// Hidden secrets and easter eggs
-const SECRETS = {
-  69: { msg: "Nice.", reward: { memes: 420 } },
-  420: { msg: "Blaze it.", reward: { memes: 69 } },
-  666: { msg: "The number of the button.", reward: { darkness: 666 } },
-  777: { msg: "Lucky you.", reward: { luck: 777 } },
-  1337: { msg: "1337 h4x0r", reward: { hacks: 1337 } },
-  2048: { msg: "Powers of two align.", reward: { binary: 2048 } },
-  3141: { msg: "π in the sky.", reward: { pi: 314159 } },
-  9999: { msg: "Almost there...", reward: { almostInfinity: 9999 } },
-  13371337: { msg: "ULTRA 1337", reward: { ultraHacks: 999999 } }
-};
-
-// Audio system with evolution
-function useEvolvingAudio() {
-  const ctxRef = useRef(null);
-  const enabledRef = useRef(false);
-  const masterGainRef = useRef(null);
-  const distortionRef = useRef(null);
-
-  useEffect(() => {
-    const enableAudio = () => {
-      if (!ctxRef.current) {
-        ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-        masterGainRef.current = ctxRef.current.createGain();
-        distortionRef.current = ctxRef.current.createWaveShaper();
-        
-        // Create distortion curve
-        const makeCurve = (amount) => {
-          const samples = 44100;
-          const curve = new Float32Array(samples);
-          const deg = Math.PI / 180;
-          for (let i = 0; i < samples; i++) {
-            const x = (i * 2) / samples - 1;
-            curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
-          }
-          return curve;
-        };
-        
-        distortionRef.current.curve = makeCurve(0);
-        distortionRef.current.connect(masterGainRef.current);
-        masterGainRef.current.connect(ctxRef.current.destination);
-        masterGainRef.current.gain.value = 0.3;
-      }
-      enabledRef.current = true;
-    };
-    window.addEventListener("pointerdown", enableAudio, { once: true });
-    window.addEventListener("keydown", enableAudio, { once: true });
-  }, []);
-
-  const playEvolvedTone = useCallback((phase = 0, special = false) => {
-    const ctx = ctxRef.current;
-    if (!ctx || !enabledRef.current) return;
-    
-    const t = ctx.currentTime;
-    
-    // Base frequency evolves with phase
-    const baseFreq = 220 * Math.pow(1.1, phase);
-    const numOscillators = Math.min(1 + Math.floor(phase / 2), 5);
-    
-    for (let i = 0; i < numOscillators; i++) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      
-      // Wave type changes with progression
-      const waveTypes = ['sine', 'square', 'sawtooth', 'triangle'];
-      o.type = phase > 3 ? randomChoice(waveTypes) : 'sine';
-      
-      // Frequency gets more chaotic
-      const freqMultiplier = 1 + (i * 0.5) + (phase > 5 ? Math.random() * 2 : 0);
-      o.frequency.setValueAtTime(baseFreq * freqMultiplier, t);
-      
-      // Add frequency modulation in later phases
-      if (phase > 4) {
-        o.frequency.exponentialRampToValueAtTime(
-          baseFreq * freqMultiplier * (0.5 + Math.random()),
-          t + 0.1
-        );
-      }
-      
-      // Envelope
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.1 / numOscillators, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05 + (phase * 0.01));
-      
-      // Connect through distortion in later phases
-      o.connect(g);
-      if (phase > 6) {
-        g.connect(distortionRef.current);
-        distortionRef.current.curve = makeCurve(phase * 10);
-      } else {
-        g.connect(masterGainRef.current);
-      }
-      
-      o.start(t);
-      o.stop(t + 0.1 + (phase * 0.02));
-    }
-    
-    // Special sound effects
-    if (special) {
-      const noise = ctx.createBufferSource();
-      const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i++) {
-        data[i] = (Math.random() - 0.5) * 0.1;
-      }
-      noise.buffer = buffer;
-      
-      const noiseGain = ctx.createGain();
-      noiseGain.gain.setValueAtTime(0.05, t);
-      noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-      
-      noise.connect(noiseGain);
-      noiseGain.connect(masterGainRef.current);
-      noise.start(t);
-    }
-  }, []);
-
-  return { playEvolvedTone };
+function mulberry32(a) {
+  return function () {
+    let t = (a += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// Glitch text generator
-const glitchText = (text, intensity = 0.1) => {
-  if (Math.random() > intensity) return text;
-  const glitchChars = '█▓▒░╚╔╩╦╠═╬╣║╗╝┐└┴┬├─┼┘┌';
-  return text.split('').map(char => 
-    Math.random() < intensity ? randomChoice(glitchChars) : char
-  ).join('');
-};
-
-// Main component
-export default function TheButton() {
-  // Core state
-  const [count, setCount] = useState(0);
-  const [phase, setPhase] = useState(0);
-  const [isPressed, setIsPressed] = useState(false);
-  const [storyIndex, setStoryIndex] = useState(0);
-  const [currentStory, setCurrentStory] = useState("A button.");
-  const [secretsFound, setSecretsFound] = useState([]);
-  const [glitchIntensity, setGlitchIntensity] = useState(0);
-  const [voidLevel, setVoidLevel] = useState(0);
-  const [transcended, setTranscended] = useState(false);
-  
-  // Visual effects state
-  const [shake, setShake] = useState(0);
-  const [rotation, setRotation] = useState(0);
-  const [scale, setScale] = useState(1);
-  const [hue, setHue] = useState(0);
-  const [blur, setBlur] = useState(0);
-  const [invert, setInvert] = useState(0);
-  
-  // Audio
-  const { playEvolvedTone } = useEvolvingAudio();
-  
-  // Calculate current phase
-  useEffect(() => {
-    const newPhase = Math.min(Math.floor(Math.log10(count + 1) * 2), 9);
-    if (newPhase !== phase) {
-      setPhase(newPhase);
-      setShake(10);
-      setTimeout(() => setShake(0), 500);
-    }
-  }, [count, phase]);
-  
-  // Story progression
-  useEffect(() => {
-    const storyTimer = setInterval(() => {
-      if (count > 0) {
-        const stories = STORY_EVOLUTION[Math.min(phase, STORY_EVOLUTION.length - 1)];
-        const nextIndex = (storyIndex + 1) % stories.length;
-        setStoryIndex(nextIndex);
-        setCurrentStory(stories[nextIndex]);
-      }
-    }, 3000 - (phase * 200));
-    
-    return () => clearInterval(storyTimer);
-  }, [phase, storyIndex, count]);
-  
-  // Glitch intensity increases with phase
-  useEffect(() => {
-    setGlitchIntensity(phase > 4 ? (phase - 4) * 0.15 : 0);
-    setVoidLevel(phase > 6 ? (phase - 6) * 0.3 : 0);
-  }, [phase]);
-  
-  // Visual chaos
-  useEffect(() => {
-    if (phase > 3) {
-      const chaosTimer = setInterval(() => {
-        setRotation(prev => prev + (phase - 3) * 0.5);
-        setHue(prev => (prev + phase * 2) % 360);
-        
-        if (phase > 5) {
-          setScale(1 + Math.sin(Date.now() * 0.001) * 0.1 * (phase - 5));
-          setBlur(Math.sin(Date.now() * 0.002) * (phase - 5) * 0.5);
-        }
-        
-        if (phase > 7) {
-          setInvert(Math.sin(Date.now() * 0.0005) * 0.5 + 0.5);
-        }
-      }, 50);
-      
-      return () => clearInterval(chaosTimer);
-    }
-  }, [phase]);
-  
-  // Check for secrets
-  useEffect(() => {
-    if (SECRETS[count] && !secretsFound.includes(count)) {
-      setSecretsFound(prev => [...prev, count]);
-      setShake(20);
-      setTimeout(() => setShake(0), 1000);
-    }
-  }, [count, secretsFound]);
-  
-  // Main button press
-  const press = useCallback(() => {
-    setCount(c => c + 1);
-    setIsPressed(true);
-    setTimeout(() => setIsPressed(false), 100);
-    
-    // Play evolved sound
-    playEvolvedTone(phase, SECRETS[count + 1] !== undefined);
-    
-    // Screen shake on certain numbers
-    if ((count + 1) % 100 === 0) {
-      setShake(5 + phase);
-      setTimeout(() => setShake(0), 300);
-    }
-    
-    // Transcendence check
-    if (count > 99999 && !transcended) {
-      setTranscended(true);
-    }
-  }, [count, phase, playEvolvedTone, transcended]);
-  
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKey = (e) => {
-      if (e.key === ' ') {
-        e.preventDefault();
-        press();
-      }
-      // Secret combinations
-      if (e.ctrlKey && e.shiftKey && e.key === 'Z') {
-        setCount(c => c + 100);
-      }
-      if (e.ctrlKey && e.altKey && e.key === 'B') {
-        setCount(c => c * 2);
-      }
-    };
-    
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [press]);
-  
-  // Calculate dynamic styles
-  const bgGradient = phase < 4 
-    ? `linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)`
-    : `linear-gradient(${rotation}deg, 
-        hsl(${hue}, ${20 + phase * 10}%, ${15 - voidLevel * 10}%) 0%, 
-        hsl(${hue + 180}, ${30 + phase * 10}%, ${10 - voidLevel * 10}%) 100%)`;
-  
-  const buttonStyle = {
-    width: 120 + (phase * 5),
-    height: 120 + (phase * 5),
-    fontSize: 16 + (phase * 2),
-    background: phase < 3 
-      ? `radial-gradient(circle, #4a4a4a 0%, #2a2a2a 100%)`
-      : `radial-gradient(circle at ${50 + Math.sin(Date.now() * 0.001) * 20}% ${50 + Math.cos(Date.now() * 0.001) * 20}%, 
-          hsl(${hue}, ${50 + phase * 10}%, ${50 - phase * 5}%) 0%, 
-          hsl(${hue + 60}, ${60 + phase * 10}%, ${30 - phase * 5}%) 100%)`,
-    border: `2px solid hsl(${hue}, ${70}%, ${60 - voidLevel * 30}%)`,
-    borderRadius: phase > 6 ? `${30 + Math.sin(Date.now() * 0.01) * 20}%` : '50%',
-    transform: `
-      scale(${isPressed ? 0.95 : scale}) 
-      rotate(${phase > 4 ? Math.sin(Date.now() * 0.001) * phase : 0}deg)
-      ${shake ? `translate(${Math.random() * shake - shake/2}px, ${Math.random() * shake - shake/2}px)` : ''}
-    `,
-    boxShadow: `
-      0 0 ${20 + phase * 10}px hsl(${hue}, 80%, 50%),
-      inset 0 0 ${10 + phase * 5}px rgba(0,0,0,0.5)
-    `
+function useLongPress(callback, ms = 900) {
+  const timer = useRef(null);
+  const start = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(callback, ms);
   };
-  
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  return { start, clear };
+}
+
+/* ---------------------------- Effects Layer UI ---------------------------- */
+
+function EffectsLayer({ effects = [], accent = "#6C8EF5", clickCount = 0 }) {
+  const reduced = useReducedMotion();
+  const has = (k) => effects.includes(k);
+
+  // Ghost tap ring that appears occasionally
+  const [ghostKey, setGhostKey] = useState(0);
+  useEffect(() => {
+    if (!has("ghostTap")) return;
+    const t = setTimeout(() => setGhostKey((v) => v + 1), 900 + (clickCount % 400));
+    return () => clearTimeout(t);
+  }, [effects, clickCount]);
+
   return (
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      height: '100vh',
-      overflow: 'hidden',
-      background: bgGradient,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'Courier New, monospace',
-      color: '#fff',
-      transition: 'all 0.3s ease',
-      filter: `
-        blur(${blur}px) 
-        invert(${invert}) 
-        hue-rotate(${phase > 8 ? Date.now() * 0.1 : 0}deg)
-      `,
-      transform: `scale(${1 + voidLevel * 0.1}) rotate(${rotation * 0.01}deg)`
-    }}>
-      {/* Phase indicator */}
-      <div style={{
-        position: 'absolute',
-        top: 20,
-        left: 20,
-        fontSize: 12,
-        opacity: 0.7,
-        letterSpacing: 2
-      }}>
-        PHASE {phase}: {glitchText(REALITY_PHASES[phase].name, glitchIntensity)}
-        <div style={{ fontSize: 10, opacity: 0.5, marginTop: 5 }}>
-          {glitchText(REALITY_PHASES[phase].desc, glitchIntensity)}
-        </div>
-      </div>
-      
-      {/* Counter */}
-      <div style={{
-        fontSize: 48 + (phase * 4),
-        fontWeight: 'bold',
-        marginBottom: 20,
-        textShadow: `0 0 ${10 + phase * 5}px hsl(${hue}, 80%, 50%)`,
-        letterSpacing: phase > 5 ? `${phase - 5}px` : 0,
-        transform: phase > 7 ? `skew(${Math.sin(Date.now() * 0.001) * 10}deg)` : 'none'
-      }}>
-        {glitchText(formatNumber(count), glitchIntensity)}
-      </div>
-      
-      {/* Story text */}
-      <div style={{
-        fontSize: 14 + phase,
-        marginBottom: 30,
-        maxWidth: '80%',
-        textAlign: 'center',
-        opacity: 0.8,
-        height: 50,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        letterSpacing: 1,
-        transform: phase > 6 ? `perspective(100px) rotateX(${Math.sin(Date.now() * 0.001) * 20}deg)` : 'none'
-      }}>
-        {glitchText(currentStory, glitchIntensity * 0.5)}
-      </div>
-      
-      {/* The Button */}
-      <button
-        onClick={press}
-        style={{
-          ...buttonStyle,
-          cursor: 'pointer',
-          color: 'white',
-          fontWeight: 'bold',
-          outline: 'none',
-          transition: 'all 0.1s ease',
-          position: 'relative',
-          overflow: 'hidden'
-        }}
-      >
-        {phase < 3 && 'PRESS'}
-        {phase >= 3 && phase < 6 && glitchText('PRESS', 0.1)}
-        {phase >= 6 && phase < 8 && glitchText('P̸R̷E̶S̵S̴', 0.3)}
-        {phase >= 8 && glitchText('Y̷O̸U̶', 0.5)}
-        
-        {/* Inner glow effect */}
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '200%',
-          height: '200%',
-          background: `radial-gradient(circle, 
-            hsla(${hue + 120}, 80%, 70%, ${0.3 + phase * 0.05}) 0%, 
-            transparent 70%)`,
-          pointerEvents: 'none',
-          animation: phase > 4 ? 'pulse 2s infinite' : 'none'
-        }} />
-      </button>
-      
-      {/* Secrets found */}
-      {secretsFound.length > 0 && (
-        <div style={{
-          position: 'absolute',
-          bottom: 20,
-          right: 20,
-          fontSize: 10,
-          opacity: 0.5,
-          textAlign: 'right'
-        }}>
-          SECRETS: {secretsFound.length}
-          <div style={{ fontSize: 8, marginTop: 5 }}>
-            {secretsFound.map(s => SECRETS[s].msg).join(' • ')}
-          </div>
-        </div>
+    <div className="tbs-effects">
+      {has("vignette") && (
+        <div className="tbs-vignette" aria-hidden />
       )}
-      
-      {/* Hidden messages */}
-      {phase > 5 && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          fontSize: 200,
-          opacity: 0.02,
-          pointerEvents: 'none',
-          zIndex: -1,
-          animation: `rotate ${20 - phase}s linear infinite`
-        }}>
-          {phase > 7 ? '∞' : '?'}
-        </div>
-      )}
-      
-      {/* Void particles */}
-      {phase > 6 && Array.from({ length: Math.min(phase - 6, 5) * 10 }, (_, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            width: 2,
-            height: 2,
-            background: `hsl(${hue + i * 10}, 80%, 70%)`,
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animation: `float ${5 + Math.random() * 10}s infinite ease-in-out`,
-            animationDelay: `${Math.random() * 5}s`,
-            opacity: 0.5
-          }}
+
+      {has("gentlePulse") && !reduced && (
+        <motion.div
+          className="tbs-pulse"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.14, 0], scale: [1, 1.06, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 0.6 }}
+          style={{ "--accent": accent }}
+          aria-hidden
         />
-      ))}
-      
-      {/* Transcendence overlay */}
-      {transcended && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(255,255,255,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 32,
-          animation: 'fadeIn 3s ease-in-out'
-        }}>
-          YOU ARE THE BUTTON
+      )}
+
+      {has("cameraGlitch") && !reduced && (
+        <div className="tbs-glitch" aria-hidden>
+          {new Array(12).fill(0).map((_, i) => (
+            <motion.div
+              key={i}
+              className="tbs-glitch-line"
+              initial={{ x: "-100%" }}
+              animate={{ x: ["-100%", "10%", "-60%", "100%"] }}
+              transition={{ duration: 0.8 + i * 0.02 }}
+              style={{ top: `${(i + 1) * 7}%` }}
+            />
+          ))}
         </div>
       )}
-      
-      {/* CSS animations */}
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
-          50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.2); }
-        }
-        
-        @keyframes rotate {
-          from { transform: translate(-50%, -50%) rotate(0deg); }
-          to { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        
-        @keyframes float {
-          0%, 100% { transform: translateY(0) translateX(0); }
-          33% { transform: translateY(-20px) translateX(10px); }
-          66% { transform: translateY(20px) translateX(-10px); }
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        
-        button:active {
-          transform: scale(0.95) !important;
-        }
-      `}</style>
+
+      {has("ghostTap") && !reduced && (
+        <motion.div
+          key={ghostKey}
+          className="tbs-ghost"
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: [0.0, 0.2, 0.0], scale: [0.6, 1.2, 1.6] }}
+          transition={{ duration: 1.2 }}
+          aria-hidden
+        >
+          <div className="tbs-ghost-ring" />
+        </motion.div>
+      )}
+
+      {has("timeSkew") && !reduced && <div className="tbs-scan" aria-hidden />}
+
+      {has("heatHaze") && !reduced && (
+        <motion.div
+          className="tbs-heat"
+          initial={{ filter: "blur(0px)" }}
+          animate={{ filter: ["blur(0px)", "blur(1.1px)", "blur(0.4px)"] }}
+          transition={{ duration: 3, repeat: Infinity, repeatType: "reverse" }}
+          aria-hidden
+        />
+      )}
     </div>
   );
 }
 
+/* ------------------------------ Main Component ---------------------------- */
+
+export default function App() {
+  const reduced = useReducedMotion();
+
+  // Load persisted
+  const initial = () => {
+    try {
+      const raw = localStorage.getItem(PERSIST_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const persisted = initial();
+  const [seed] = useState(() => persisted?.seed ?? Math.floor(Math.random() * 1e9));
+  const rng = useMemo(() => mulberry32(seed), [seed]);
+
+  const [clickCount, setClickCount] = useState(persisted?.clickCount ?? 0);
+  const [title, setTitle] = useState(persisted?.title ?? "Press to begin.");
+  const [effects, setEffects] = useState(persisted?.effects ?? []);
+  const [accent, setAccent] = useState(persisted?.accent ?? "#6C8EF5");
+  const [branchId, setBranchId] = useState(persisted?.branchId ?? null);
+  const [branchIndex, setBranchIndex] = useState(persisted?.branchIndex ?? 0);
+  const [audio, setAudio] = useState(false);
+  const [lastEvent, setLastEvent] = useState("none");
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Update document theme color
+  useEffect(() => {
+    document.documentElement.style.setProperty("--accent", accent);
+  }, [accent]);
+
+  // Persist on change
+  useEffect(() => {
+    const toSave = {
+      v: 1,
+      seed,
+      clickCount,
+      title,
+      effects,
+      accent,
+      branchId,
+      branchIndex,
+    };
+    try {
+      localStorage.setItem(PERSIST_KEY, JSON.stringify(toSave));
+    } catch {}
+  }, [seed, clickCount, title, effects, accent, branchId, branchIndex]);
+
+  // WebAudio beep without external libs
+  const audioCtxRef = useRef(null);
+  const beep = useCallback(
+    (kind = "tap") => {
+      if (!audio) return;
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+        const ctx = audioCtxRef.current;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = kind === "tap" ? 340 : 180;
+        gain.gain.value = 0.0001;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        const now = ctx.currentTime;
+        gain.gain.exponentialRampToValueAtTime(0.06, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.00001, now + 0.12);
+        osc.stop(now + 0.14);
+      } catch {}
+    },
+    [audio]
+  );
+
+  // Rare event picker
+  const pickRare = () => {
+    const factor = reduced ? 0.5 : 1;
+    for (const e of storySchema.rareEvents) {
+      const r = rng();
+      if (r < e.chance * factor) return e;
+    }
+    return null;
+  };
+
+  const computeMilestoneTitle = (count) => {
+    const past = [...storySchema.milestones]
+      .filter((m) => m.at <= count)
+      .sort((a, b) => b.at - a.at)[0];
+    return past?.title ?? null;
+  };
+
+  const next = () => {
+    // Rare events can override normal step
+    const rare = pickRare();
+    if (rare) {
+      setTitle(rare.title);
+      setEffects((prev) => Array.from(new Set([...(prev || []), ...(rare.effects || [])])));
+      setLastEvent(`rare:${rare.key || "rare"}`);
+      setClickCount((c) => c + 1);
+      beep("tap");
+      return;
+    }
+
+    setClickCount((c) => {
+      const nextCount = c + 1;
+
+      // Branch mode advance
+      if (branchId) {
+        const steps = storySchema.branches[branchId] || [];
+        const idx = Math.min(branchIndex + 1, steps.length - 1);
+        setBranchIndex(idx);
+        const step = steps[idx];
+        if (step) {
+          setTitle(step.title);
+          if (step.effects) setEffects((prev) => Array.from(new Set([...(prev || []), ...step.effects])));
+        }
+        setLastEvent("branch-step");
+        beep("tap");
+        return nextCount;
+      }
+
+      // Regular milestone
+      const hit = storySchema.milestones.find((m) => m.at === nextCount);
+      if (hit) {
+        setTitle(hit.title);
+        if (hit.effects) setEffects((prev) => Array.from(new Set([...(prev || []), ...hit.effects])));
+        if (hit.ui?.accent) {
+          setAccent(hit.ui.accent);
+          setLastEvent("ui");
+        }
+        if (hit.branch && hit.branch.length > 0) {
+          // Choices shown in UI below
+        }
+        setLastEvent(`milestone:${hit.at}`);
+        beep("tap");
+        return nextCount;
+      }
+
+      // Soft procedural lines between milestones
+      if (nextCount % 3 === 0) setTitle("You press. Something notes it.");
+      else if (nextCount % 7 === 0) setTitle("A faint tick traces the air.");
+      else setTitle("Press again.");
+
+      setLastEvent("click");
+      beep("tap");
+      return nextCount;
+    });
+  };
+
+  const setBranch = (id) => {
+    setBranchId(id);
+    setBranchIndex(0);
+    const first = storySchema.branches[id]?.[0];
+    if (first) {
+      setTitle(first.title);
+      if (first.effects) setEffects((prev) => Array.from(new Set([...(prev || []), ...first.effects])));
+    }
+    setLastEvent(`branch:${id}`);
+  };
+
+  const reset = () => {
+    setClickCount(0);
+    setTitle("Press to begin.");
+    setEffects([]);
+    setAccent("#6C8EF5");
+    setBranchId(null);
+    setBranchIndex(0);
+    setLastEvent("reset");
+  };
+
+  // Keyboard support
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === " " || e.key.toLowerCase() === "enter") {
+        e.preventDefault();
+        next();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [branchId, branchIndex, next]);
+
+  // Long press to open debug
+  const { start: startLong, clear: clearLong } = useLongPress(() => setShowDebug(true), 900);
+
+  // Branch options visible only when the current click hit a branching milestone
+  const branchOptions = useMemo(() => {
+    const ms = storySchema.milestones.find((m) => m.at === clickCount && m.branch);
+    return ms?.branch ?? null;
+  }, [clickCount]);
+
+  // For initial rehydration title if needed
+  useEffect(() => {
+    if (!persisted) return;
+    // On reload compute a reasonable title
+    if (title === "Press to begin.") {
+      const t = computeMilestoneTitle(clickCount);
+      if (t) setTitle(t);
+    }
+  }, []); // run once
+
+  const showAudioToggle = clickCount >= 10;
+
+  return (
+    <div className="tbs-root">
+      <div
+        className="tbs-header"
+        onMouseDown={startLong}
+        onMouseUp={clearLong}
+        onTouchStart={startLong}
+        onTouchEnd={clearLong}
+      >
+        <h1 className="tbs-title">The Button Story</h1>
+        <p className="tbs-sub">A quiet room. A single choice.</p>
+      </div>
+
+      <div className="tbs-card">
+        <EffectsLayer effects={effects} accent={accent} clickCount={clickCount} />
+
+        <motion.button
+          className="tbs-button"
+          onClick={next}
+          whileTap={{ scale: 0.98 }}
+          aria-live="polite"
+          aria-label="The Button"
+        >
+          <span className="tbs-button-label">Press</span>
+          <span className="tbs-button-sub">Count {clickCount}</span>
+        </motion.button>
+
+        <motion.p
+          key={title + ":" + clickCount}
+          initial={reduced ? { opacity: 1 } : { opacity: 0, y: 6 }}
+          animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+          transition={{ duration: reduced ? 0 : 0.28 }}
+          className="tbs-line"
+        >
+          {title}
+        </motion.p>
+
+        {branchOptions && (
+          <div className="tbs-branches">
+            {branchOptions.map((id) => (
+              <button key={id} onClick={() => setBranch(id)} className="tbs-branch-btn">
+                {id.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="tbs-controls">
+        {showAudioToggle && (
+          <button
+            onClick={() => setAudio((v) => !v)}
+            aria-pressed={audio}
+            className="tbs-pill"
+            title="Toggle sound"
+          >
+            {audio ? "Sound on" : "Sound off"}
+          </button>
+        )}
+        <button onClick={reset} className="tbs-pill" title="Reset progress">
+          Reset
+        </button>
+        <div className="tbs-counter">{clickCount}</div>
+        <span className="tbs-accent-dot" style={{ background: accent }} aria-hidden />
+      </div>
+
+      {showDebug && (
+        <div className="tbs-debug">
+          <div className="tbs-debug-head">
+            <strong>Debug</strong>
+            <button onClick={() => setShowDebug(false)} className="tbs-debug-close">
+              Close
+            </button>
+          </div>
+          <div className="tbs-debug-grid">
+            <div>Clicks</div>
+            <div className="tbs-right">{clickCount}</div>
+            <div>Branch</div>
+            <div className="tbs-right">{branchId ?? "none"}</div>
+            <div>Seed</div>
+            <div className="tbs-right">{seed}</div>
+            <div>Last</div>
+            <div className="tbs-right">{lastEvent}</div>
+          </div>
+          <div className="tbs-debug-jumps">
+            {[1, 5, 12, 25, 50, 75, 100].map((n) => (
+              <button
+                key={n}
+                onClick={() => {
+                  reset();
+                  for (let i = 0; i < n; i++) next();
+                }}
+                className="tbs-jump"
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
